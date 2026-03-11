@@ -1,4 +1,7 @@
+import threading
+
 from flask import Response, g, request
+from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
 from mlflow.protos.service_pb2 import (
     CreateExperiment,
@@ -416,6 +419,71 @@ AFTER_REQUEST_HANDLERS = {
 }
 
 
+def _fire_quota_reconciliation(owner: str) -> None:
+    """Spawn a daemon thread to reconcile quota for *owner*."""
+    from mlflow_oidc_auth.utils.quota import reconcile_user_quota
+
+    logger = get_logger()
+
+    def _run(username: str) -> None:
+        try:
+            reconcile_user_quota(username)
+        except Exception as exc:
+            logger.warning(f"Background quota reconciliation failed for {username!r}: {exc}")
+
+    threading.Thread(target=_run, args=(owner,), daemon=True).start()
+
+
+def _reconcile_quota_after_artifact_delete() -> None:
+    """Quota reconciliation after a proxy-artifact DELETE."""
+    from mlflow_oidc_auth.utils.quota import get_experiment_owner
+
+    _proxy_prefix = f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/"
+    remainder = request.path[len(_proxy_prefix):]
+    experiment_id = remainder.split("/")[0] if remainder else None
+    if not experiment_id:
+        return
+
+    owner = get_experiment_owner(experiment_id)
+    if owner:
+        _fire_quota_reconciliation(owner)
+
+
+def _reconcile_quota_after_run_delete() -> None:
+    """Quota reconciliation after a run deletion."""
+    from mlflow.server.handlers import _get_tracking_store
+    from mlflow_oidc_auth.utils.quota import get_experiment_owner
+
+    data = request.get_json(force=True, silent=True) or {}
+    run_id = data.get("run_id")
+    if not run_id:
+        return
+
+    try:
+        run = _get_tracking_store().get_run(run_id)
+        experiment_id = run.info.experiment_id
+    except Exception:
+        return
+
+    owner = get_experiment_owner(str(experiment_id))
+    if owner:
+        _fire_quota_reconciliation(owner)
+
+
+def _reconcile_quota_after_experiment_delete() -> None:
+    """Quota reconciliation after an experiment deletion."""
+    from mlflow_oidc_auth.utils.quota import get_experiment_owner
+
+    data = request.get_json(force=True, silent=True) or {}
+    experiment_id = data.get("experiment_id")
+    if not experiment_id:
+        return
+
+    owner = get_experiment_owner(str(experiment_id))
+    if owner:
+        _fire_quota_reconciliation(owner)
+
+
 @catch_mlflow_exception
 def after_request_hook(resp: Response):
     if 400 <= resp.status_code < 600:
@@ -423,4 +491,16 @@ def after_request_hook(resp: Response):
 
     if handler := AFTER_REQUEST_HANDLERS.get((request.path, request.method)):
         handler(resp)
+
+    path = request.path
+    method = request.method
+
+    _proxy_prefix = f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/"
+    if path.startswith(_proxy_prefix) and method == "DELETE":
+        _reconcile_quota_after_artifact_delete()
+    elif method == "POST" and path.endswith("/runs/delete"):
+        _reconcile_quota_after_run_delete()
+    elif method == "POST" and path.endswith("/experiments/delete"):
+        _reconcile_quota_after_experiment_delete()
+
     return resp
