@@ -347,8 +347,21 @@ async def permanently_delete_all_trashed_entities(
 
                 # Delete artifacts
                 try:
-                    artifact_repo = get_artifact_repository(run.info.artifact_uri)
-                    artifact_repo.delete_artifacts()
+                    from mlflow.server.handlers import (
+                        _get_artifact_repo_mlflow_artifacts,
+                        _get_proxied_run_artifact_destination_path,
+                        _get_workspace_scoped_repo_path_if_enabled,
+                        _is_servable_proxied_run_artifact_root,
+                    )
+
+                    if _is_servable_proxied_run_artifact_root(run.info.artifact_uri):
+                        artifact_repo = _get_artifact_repo_mlflow_artifacts()
+                        artifact_path = _get_proxied_run_artifact_destination_path(run.info.artifact_uri)
+                        artifact_path = _get_workspace_scoped_repo_path_if_enabled(artifact_path)
+                        artifact_repo.delete_artifacts(artifact_path)
+                    else:
+                        artifact_repo = get_artifact_repository(run.info.artifact_uri)
+                        artifact_repo.delete_artifacts()
                 except InvalidUrlException as e:
                     logger.warning(f"Could not delete artifacts for run {run_id}: {str(e)}")
                 except Exception as e:
