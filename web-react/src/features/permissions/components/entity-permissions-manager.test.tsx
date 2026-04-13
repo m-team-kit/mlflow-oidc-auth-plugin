@@ -53,13 +53,16 @@ describe("EntityPermissionsManager", () => {
       "usePermissionsManagement",
     ).mockReturnValue(defaultManagement);
     vi.spyOn(useAllUsersModule, "useAllUsers").mockReturnValue({
-      allUsers: ["user1", "user2"],
+      allUsers: [
+        { username: "user1", display_name: "User One" },
+        { username: "user2", display_name: "User Two" },
+      ],
       isLoading: false,
       error: null,
       refresh: vi.fn(),
     });
     vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
-      allServiceAccounts: ["sa1"],
+      allServiceAccounts: [{ username: "sa1", display_name: "Service Account 1" }],
       isLoading: false,
       error: null,
       refresh: vi.fn(),

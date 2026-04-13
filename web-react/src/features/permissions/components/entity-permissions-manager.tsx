@@ -62,12 +62,12 @@ export function EntityPermissionsManager({
 
   const existingNames = new Set(permissions.map((p) => p.name));
 
-  const availableUsers = (allUsers || []).filter(
-    (username) => !existingNames.has(username),
-  );
-  const availableAccounts = (allServiceAccounts || []).filter(
-    (username) => !existingNames.has(username),
-  );
+  const availableUsers = (allUsers || [])
+    .filter((u) => !existingNames.has(u.username))
+    .map((u) => ({ label: `${u.display_name} (${u.username})`, value: u.username }));
+  const availableAccounts = (allServiceAccounts || [])
+    .filter((u) => !existingNames.has(u.username))
+    .map((u) => ({ label: `${u.display_name} (${u.username})`, value: u.username }));
   const availableGroups = (allGroups || []).filter(
     (groupname) => !existingNames.has(groupname),
   );
@@ -88,6 +88,10 @@ export function EntityPermissionsManager({
     {
       header: "Name",
       render: (item) => item.name,
+    },
+    {
+      header: "Display Name",
+      render: (item) => item.display_name ?? "",
     },
     {
       header: "Permission",

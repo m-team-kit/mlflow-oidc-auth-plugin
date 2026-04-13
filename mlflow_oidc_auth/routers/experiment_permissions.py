@@ -75,6 +75,7 @@ async def get_experiment_users(
             users_with_permissions.append(
                 UserPermission(
                     name=user.username,
+                    display_name=user.display_name,
                     permission=user_experiment_permissions[experiment_id],
                     kind="service-account" if user.is_service_account else "user",
                 )

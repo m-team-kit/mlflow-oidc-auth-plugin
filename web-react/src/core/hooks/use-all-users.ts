@@ -1,5 +1,6 @@
 import { fetchAllUsers } from "../services/user-service";
 import { useApi } from "./use-api";
+import type { UserSummary } from "../../shared/types/user";
 
 export function useAllUsers() {
   const {
@@ -7,7 +8,7 @@ export function useAllUsers() {
     isLoading,
     error,
     refetch: refresh,
-  } = useApi<string[]>(fetchAllUsers);
+  } = useApi<UserSummary[]>(fetchAllUsers);
 
   return { allUsers, isLoading, error, refresh };
 }

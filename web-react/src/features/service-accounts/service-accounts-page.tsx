@@ -32,8 +32,8 @@ export default function ServiceAccountsPage() {
 
   const serviceAccountsList = allServiceAccounts || [];
 
-  const filteredServiceAccounts = serviceAccountsList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const filteredServiceAccounts = serviceAccountsList.filter((u) =>
+    u.username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const handleCreateServiceAccount = async (data: {
@@ -70,9 +70,9 @@ export default function ServiceAccountsPage() {
 
   const isAdmin = currentUser?.is_admin === true;
 
-  const tableData = filteredServiceAccounts.map((username) => ({
-    id: username,
-    username,
+  const tableData = filteredServiceAccounts.map((u) => ({
+    id: u.username,
+    username: u.username,
   }));
 
   const columns: ColumnConfig<{ id: string; username: string }>[] = [

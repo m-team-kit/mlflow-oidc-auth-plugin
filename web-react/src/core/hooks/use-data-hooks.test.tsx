@@ -64,7 +64,10 @@ describe("Core Data Hooks", () => {
 
   describe("useAllServiceAccounts", () => {
     it("returns all service accounts", async () => {
-      const mockAccounts = ["sa1", "sa2"];
+      const mockAccounts = [
+        { username: "sa1", display_name: "Service Account 1" },
+        { username: "sa2", display_name: "Service Account 2" },
+      ];
       vi.spyOn(userService, "fetchAllServiceAccounts").mockResolvedValue(
         mockAccounts,
       );
@@ -139,7 +142,10 @@ describe("Core Data Hooks", () => {
 
   describe("useAllUsers", () => {
     it("returns all users", async () => {
-      const mockUsers = ["user1", "user2"];
+      const mockUsers = [
+        { username: "user1", display_name: "User One" },
+        { username: "user2", display_name: "User Two" },
+      ];
       vi.spyOn(userService, "fetchAllUsers").mockResolvedValue(mockUsers);
 
       const { result } = renderHook(() => useAllUsers());

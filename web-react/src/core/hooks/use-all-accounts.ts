@@ -1,5 +1,6 @@
 import { fetchAllServiceAccounts } from "../services/user-service";
 import { useApi } from "./use-api";
+import type { UserSummary } from "../../shared/types/user";
 
 export function useAllServiceAccounts() {
   const {
@@ -7,7 +8,7 @@ export function useAllServiceAccounts() {
     isLoading,
     error,
     refetch: refresh,
-  } = useApi<string[]>(fetchAllServiceAccounts);
+  } = useApi<UserSummary[]>(fetchAllServiceAccounts);
 
   return { allServiceAccounts, isLoading, error, refresh };
 }

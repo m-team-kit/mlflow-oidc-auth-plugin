@@ -96,7 +96,7 @@ describe("ServiceAccountsPage", () => {
     vi.clearAllMocks();
 
     vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
-      allServiceAccounts: ["sa1"],
+      allServiceAccounts: [{ username: "sa1", display_name: "Service Account 1" }],
       isLoading: false,
       error: null,
       refresh: mockRefresh,

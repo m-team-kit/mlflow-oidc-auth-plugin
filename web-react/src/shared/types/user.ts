@@ -1,3 +1,8 @@
+export type UserSummary = {
+  username: string;
+  display_name: string;
+};
+
 export type Group = {
   id: number;
   group_name: string;

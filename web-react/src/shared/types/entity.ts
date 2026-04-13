@@ -34,6 +34,7 @@ export type EntityPermission = {
   kind: PermissionKind;
   permission: PermissionLevel;
   name: string;
+  display_name?: string;
 };
 
 export type ExperimentPermission = {

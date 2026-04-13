@@ -144,8 +144,7 @@ async def list_users(service: bool = False, username: str = Depends(get_username
     try:
         from mlflow_oidc_auth.store import store
 
-        # Get users filtered by service account type
-        users = [user.username for user in store.list_users(is_service_account=service)]
+        users = [{"username": u.username, "display_name": u.display_name} for u in store.list_users(is_service_account=service)]
 
         return JSONResponse(content=users)
 

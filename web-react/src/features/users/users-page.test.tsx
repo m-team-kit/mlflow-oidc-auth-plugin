@@ -81,7 +81,10 @@ describe("UsersPage", () => {
       isLoading: false,
       error: null,
       refresh: vi.fn(),
-      allUsers: ["user1", "user2"],
+      allUsers: [
+        { username: "user1", display_name: "User One" },
+        { username: "user2", display_name: "User Two" },
+      ],
     });
 
     render(<UsersPage />);

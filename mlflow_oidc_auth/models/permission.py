@@ -35,5 +35,6 @@ class UserPermission(BaseModel):
     """
 
     name: str = Field(..., description="Username of the user with access")
+    display_name: str = Field(..., description="Display name of the user")
     permission: str = Field(..., description="Permission level for the resource")
     kind: Literal["user", "service-account"] = Field(..., description="Kind of user account")

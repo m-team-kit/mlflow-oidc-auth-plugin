@@ -4,7 +4,7 @@ import {
 } from "./create-api-fetcher";
 import { request } from "./api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
-import type { CurrentUser, UserQuota } from "../../shared/types/user";
+import type { CurrentUser, UserSummary, UserQuota } from "../../shared/types/user";
 
 export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
   endpointKey: "GET_CURRENT_USER",
@@ -14,14 +14,14 @@ export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
   },
 });
 
-export const fetchAllUsers = createStaticApiFetcher<string[]>({
+export const fetchAllUsers = createStaticApiFetcher<UserSummary[]>({
   endpointKey: "USERS_RESOURCE",
-  responseType: [] as string[],
+  responseType: [] as UserSummary[],
 });
 
-export const fetchAllServiceAccounts = createStaticApiFetcher<string[]>({
+export const fetchAllServiceAccounts = createStaticApiFetcher<UserSummary[]>({
   endpointKey: "USERS_RESOURCE",
-  responseType: [] as string[],
+  responseType: [] as UserSummary[],
   queryParams: {
     service: true,
   },

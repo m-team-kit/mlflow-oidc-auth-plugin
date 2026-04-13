@@ -20,13 +20,13 @@ export default function UsersPage() {
 
   const usersList = allUsers || [];
 
-  const filteredUsers = usersList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const filteredUsers = usersList.filter((u) =>
+    u.username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
-  const tableData = filteredUsers.map((username) => ({
-    id: username,
-    username,
+  const tableData = filteredUsers.map((u) => ({
+    id: u.username,
+    username: u.username,
   }));
 
   const renderPermissionsButton = (username: string) => (
