@@ -429,6 +429,17 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             user_module.populate_groups(group_names=user_groups)
             user_module.update_user(username=username, group_names=user_groups)
 
+            # Keep quota email in sync with the real OIDC email claim (separate from username,
+            # which may be preferred_username). Only updates if a quota row already exists.
+            real_email = userinfo.get("email")
+            if real_email:
+                try:
+                    from mlflow_oidc_auth.store import store as _store
+
+                    _store.update_quota_email(username, real_email)
+                except Exception as _e:
+                    logger.warning(f"Could not update quota email for {username}: {_e}")
+
             logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
         except Exception as e:

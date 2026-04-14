@@ -42,13 +42,12 @@ def get_logger() -> logging.Logger:
             )
             handler.setLevel(logging.INFO)  # Match default; override via env
             _logger.addHandler(handler)
+            # Ensure propagation is enabled for testing frameworks
+            _logger.propagate = True
 
         # Set level from environment
         log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
         log_level = VALID_LEVELS.get(log_level_str, logging.INFO)
         _logger.setLevel(log_level)
-
-        # Ensure propagation is enabled for testing frameworks
-        _logger.propagate = True
 
     return _logger

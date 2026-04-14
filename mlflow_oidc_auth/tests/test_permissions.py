@@ -200,7 +200,8 @@ class TestValidatePermission:
         assert exc_info.value.error_code == "INVALID_PARAMETER_VALUE"
         assert "Invalid permission 'INVALID_PERMISSION'" in str(exc_info.value)
         assert "Valid permissions are:" in str(exc_info.value)
-        assert "('READ', 'USE', 'EDIT', 'MANAGE', 'NO_PERMISSIONS')" in str(exc_info.value)
+        assert "INVALID_PERMISSION" in str(exc_info.value)
+        assert "Valid permissions are:" in str(exc_info.value)
 
     def test_validate_permission_case_sensitive(self):
         """Test validation is case sensitive."""

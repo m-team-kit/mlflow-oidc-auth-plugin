@@ -4,7 +4,7 @@ import {
 } from "./create-api-fetcher";
 import { request } from "./api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
-import type { CurrentUser } from "../../shared/types/user";
+import type { CurrentUser, UserQuota } from "../../shared/types/user";
 
 export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
   endpointKey: "GET_CURRENT_USER",
@@ -33,6 +33,11 @@ export const fetchUserDetails = createDynamicApiFetcher<
 >({
   endpointKey: "GET_USER_DETAILS",
   responseType: {} as CurrentUser,
+});
+
+export const fetchUserQuota = createDynamicApiFetcher<UserQuota, "GET_USER_QUOTA">({
+  endpointKey: "GET_USER_QUOTA",
+  responseType: {} as UserQuota,
 });
 
 export const createUser = async (data: {

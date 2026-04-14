@@ -196,6 +196,10 @@ export const DYNAMIC_API_ENDPOINTS = {
   ) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
 
+  // Quota
+  GET_USER_QUOTA: (username: string) =>
+    `/oidc/quota/users/${encodeURIComponent(username)}`,
+
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>
     `/oidc/trash/experiments/${encodeURIComponent(experimentId)}/restore`,

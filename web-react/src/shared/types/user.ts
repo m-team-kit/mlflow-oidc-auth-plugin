@@ -13,6 +13,18 @@ export type CurrentUser = {
   username: string;
 };
 
+export interface UserQuota {
+  username: string;
+  user_id: number;
+  quota_bytes: number | null;
+  soft_cap_fraction: number;
+  used_bytes: number;
+  hard_blocked: boolean;
+  email: string | null;
+  last_reconciled_at: string | null;
+  soft_notified_at: string | null;
+}
+
 export interface UserContextType {
   currentUser: CurrentUser | null;
   setCurrentUser: (user: CurrentUser | null) => void;
