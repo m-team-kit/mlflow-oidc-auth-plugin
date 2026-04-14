@@ -1,10 +1,7 @@
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { useAuthErrors } from "./hooks/use-auth-errors";
 import { Button } from "../../shared/components/button";
-import {
-  faHeart,
-  faExclamationCircle,
-} from "@fortawesome/free-solid-svg-icons";
+import { faExclamationCircle, } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import DarkModeToggle from "../../shared/components/dark-mode-toggle";
 
@@ -74,18 +71,6 @@ export const AuthPage = () => {
       <footer className="w-full py-6 flex flex-col ml-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
         <div className="flex gap-4">
           <span>&copy; {currentYear} mlflow-oidc-auth</span>
-          <a
-            href="https://github.com/sponsors/mlflow-oidc?o=esb"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-4 hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
-          >
-            <FontAwesomeIcon
-              icon={faHeart}
-              className="color-text-btn-secondary"
-            />
-            <span>Support the project</span>
-          </a>
         </div>
       </footer>
     </div>
