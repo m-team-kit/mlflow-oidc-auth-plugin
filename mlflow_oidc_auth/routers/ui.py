@@ -43,6 +43,8 @@ async def serve_spa_config(base_path: str = Depends(get_base_path), authenticate
             "provider": config.OIDC_PROVIDER_DISPLAY_NAME,
             "authenticated": authenticated,
             "gen_ai_gateway_enabled": config.OIDC_GEN_AI_GATEWAY_ENABLED,
+            "privacyPolicyUrl": config.PRIVACY_POLICY_URL,
+            "termsOfServiceUrl": config.TERMS_OF_SERVICE_URL,
         }
     )
 

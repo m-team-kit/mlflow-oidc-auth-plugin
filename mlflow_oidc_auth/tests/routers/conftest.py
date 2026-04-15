@@ -285,6 +285,8 @@ def mock_config():
     config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
     config_mock.OIDC_GROUP_NAME = ["user-group", "test-group"]
     config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
+    config_mock.PRIVACY_POLICY_URL = None
+    config_mock.TERMS_OF_SERVICE_URL = None
     return config_mock
 
 

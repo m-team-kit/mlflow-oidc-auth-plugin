@@ -4,6 +4,9 @@ export type RuntimeConfig = {
   provider: string;
   authenticated: boolean;
   gen_ai_gateway_enabled: boolean;
+
+  privacyPolicyUrl?: string;
+  termsOfServiceUrl?: string;
 };
 
 let cachedConfig: RuntimeConfig | null = null;

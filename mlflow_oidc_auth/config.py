@@ -115,6 +115,9 @@ class AppConfig:
         self.QUOTA_RECONCILE_INTERVAL_S = config_manager.get_int("QUOTA_RECONCILE_INTERVAL_S", default=3600)
         self.QUOTA_TRASH_RETENTION_DAYS = config_manager.get_int("QUOTA_TRASH_RETENTION_DAYS", default=30)
 
+        self.PRIVACY_POLICY_URL = config_manager.get("PRIVACY_POLICY_URL")
+        self.TERMS_OF_SERVICE_URL = config_manager.get("TERMS_OF_SERVICE_URL")
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 
