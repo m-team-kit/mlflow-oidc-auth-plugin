@@ -52,6 +52,7 @@ async def get_gateway_model_definition_users(
             users.append(
                 UserPermission(
                     name=user.username,
+                    display_name=user.display_name or "",
                     permission=user_defs[name],
                     kind="service-account" if user.is_service_account else "user",
                 )

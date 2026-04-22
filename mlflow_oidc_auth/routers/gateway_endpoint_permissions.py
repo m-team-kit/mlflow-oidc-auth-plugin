@@ -53,6 +53,7 @@ async def get_gateway_endpoint_users(
             users.append(
                 UserPermission(
                     name=user.username,
+                    display_name=user.display_name or "",
                     permission=user_gateways[name],
                     kind="service-account" if user.is_service_account else "user",
                 )

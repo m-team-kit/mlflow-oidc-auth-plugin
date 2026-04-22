@@ -1,7 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { UserDetailsCard } from "./user-details-card";
+import { RuntimeConfigProvider } from "../../../shared/context/runtime-config-provider";
 import type { CurrentUser } from "../../../shared/types/user";
+import type { RuntimeConfig } from "../../../shared/services/runtime-config";
+
+const mockConfig: RuntimeConfig = {
+  basePath: "",
+  uiPath: "/oidc/ui",
+  provider: "Test",
+  authenticated: true,
+  gen_ai_gateway_enabled: false,
+};
 
 describe("UserDetailsCard", () => {
   const mockUser: CurrentUser = {
@@ -18,7 +28,11 @@ describe("UserDetailsCard", () => {
   };
 
   it("renders user details and groups", () => {
-    const { getByText } = render(<UserDetailsCard currentUser={mockUser} />);
+    const { getByText } = render(
+      <RuntimeConfigProvider config={mockConfig}>
+        <UserDetailsCard currentUser={mockUser} />
+      </RuntimeConfigProvider>,
+    );
 
     expect(getByText("Test User")).toBeDefined();
     expect(getByText("testuser")).toBeDefined();
@@ -37,7 +51,9 @@ describe("UserDetailsCard", () => {
       password_expiration: null,
     };
     const { getByText, queryByText } = render(
-      <UserDetailsCard currentUser={minimalUser} />,
+      <RuntimeConfigProvider config={mockConfig}>
+        <UserDetailsCard currentUser={minimalUser} />
+      </RuntimeConfigProvider>,
     );
 
     expect(getByText("N/A")).toBeDefined();

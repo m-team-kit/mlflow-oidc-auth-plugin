@@ -57,11 +57,13 @@ class TestGatewayEndpointPermissionRoutes:
         assert len(body) == 2
         assert {
             "name": "admin@example.com",
+            "display_name": "Admin User",
             "permission": "MANAGE",
             "kind": "user",
         } in body
         assert {
             "name": "user@example.com",
+            "display_name": "Regular User",
             "permission": "READ",
             "kind": "user",
         } in body
@@ -84,11 +86,13 @@ class TestGatewayEndpointPermissionRoutes:
         # admin should not be included since they have permissions for a different endpoint
         assert {
             "name": "user@example.com",
+            "display_name": "Regular User",
             "permission": "READ",
             "kind": "user",
         } in body
         assert {
             "name": "service@example.com",
+            "display_name": "Service Account",
             "permission": "EDIT",
             "kind": "service-account",
         } in body

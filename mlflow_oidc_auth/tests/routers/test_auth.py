@@ -412,14 +412,16 @@ class TestProcessOIDCCallbackFastAPI:
             {
                 "access_token": "token",
                 "id_token": "id_token",
-                "userinfo": {
-                    "email": "test@example.com",
-                    "name": "Test User",
-                    "groups": ["test-group"],
-                },
             },
         ]
         mock_oauth.oidc.fetch_jwk_set = AsyncMock()
+        mock_oauth.oidc.userinfo = AsyncMock(
+            return_value={
+                "email": "test@example.com",
+                "name": "Test User",
+                "groups": ["test-group"],
+            }
+        )
 
         with (
             patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
@@ -510,12 +512,12 @@ class TestProcessOIDCCallbackFastAPI:
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        # Mock token response without userinfo
+        # Mock token response without userinfo; userinfo endpoint also returns nothing
         mock_oauth.oidc.authorize_access_token.return_value = {
             "access_token": "token",
             "id_token": "id_token",
-            # Missing userinfo
         }
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=None)
 
         with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
@@ -530,22 +532,15 @@ class TestProcessOIDCCallbackFastAPI:
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        # Mock token response with userinfo but no email
-        mock_oauth.oidc.authorize_access_token.return_value = {
-            "access_token": "token",
-            "id_token": "id_token",
-            "userinfo": {
-                "name": "Test User"
-                # Missing email
-            },
-        }
+        # Mock userinfo endpoint returning no email field
+        mock_oauth.oidc.userinfo = AsyncMock(return_value={"name": "Test User"})
 
         with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
             assert email is None
             assert len(errors) == 1
-            assert "No email provided in OIDC userinfo" in errors[0]
+            assert "No username provided in OIDC userinfo" in errors[0]
 
     @pytest.mark.asyncio
     async def test_process_callback_unauthorized_user(self, mock_request_with_session, mock_oauth, mock_config):
@@ -553,16 +548,14 @@ class TestProcessOIDCCallbackFastAPI:
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        # Mock token response with user not in allowed groups
-        mock_oauth.oidc.authorize_access_token.return_value = {
-            "access_token": "token",
-            "id_token": "id_token",
-            "userinfo": {
+        # Mock userinfo endpoint returning user not in allowed groups
+        mock_oauth.oidc.userinfo = AsyncMock(
+            return_value={
                 "email": "unauthorized@example.com",
                 "name": "Unauthorized User",
                 "groups": ["unauthorized-group"],
-            },  # Not in allowed groups
-        }
+            }
+        )
 
         # Mock config with specific allowed groups
         mock_config.OIDC_ADMIN_GROUP_NAME = ["admin-group"]

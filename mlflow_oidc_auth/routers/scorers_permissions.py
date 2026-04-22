@@ -108,6 +108,7 @@ async def get_scorer_users(
             scorer_users.append(
                 UserPermission(
                     name=user.username,
+                    display_name=user.display_name or "",
                     permission=scorer_permissions[(str(experiment_id), str(scorer_name))],
                     kind="service-account" if user.is_service_account else "user",
                 )

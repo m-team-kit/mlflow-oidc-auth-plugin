@@ -365,6 +365,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
         fake_exchange2,
         raising=False,
     )
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "userinfo",
+        lambda **kwargs: None,
+        raising=False,
+    )
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
@@ -372,12 +378,18 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
 
     # missing username (no configured fields found)
     async def fake_exchange3(request):
-        return {"access_token": "a", "id_token": "i", "userinfo": {"name": "n"}}
+        return {"access_token": "a", "id_token": "i"}
 
     monkeypatch.setattr(
         auth_router_mod.oauth.oidc,
         "authorize_access_token",
         fake_exchange3,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "userinfo",
+        lambda **kwargs: {"name": "n"},
         raising=False,
     )
     monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email", "preferred_username"], raising=False)
@@ -388,12 +400,18 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
 
     # missing display name
     async def fake_exchange4(request):
-        return {"access_token": "a", "id_token": "i", "userinfo": {"email": "e@x.com"}}
+        return {"access_token": "a", "id_token": "i"}
 
     monkeypatch.setattr(
         auth_router_mod.oauth.oidc,
         "authorize_access_token",
         fake_exchange4,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "userinfo",
+        lambda **kwargs: {"email": "e@x.com"},
         raising=False,
     )
     monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name"], raising=False)
@@ -404,16 +422,18 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
 
     # user not allowed
     async def fake_exchange5(request):
-        return {
-            "access_token": "a",
-            "id_token": "i",
-            "userinfo": {"email": "e@x.com", "name": "Name", "groups": ["other"]},
-        }
+        return {"access_token": "a", "id_token": "i"}
 
     monkeypatch.setattr(
         auth_router_mod.oauth.oidc,
         "authorize_access_token",
         fake_exchange5,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "userinfo",
+        lambda **kwargs: {"email": "e@x.com", "name": "Name", "groups": ["other"]},
         raising=False,
     )
     monkeypatch.setattr(config, "OIDC_GROUP_DETECTION_PLUGIN", "")
@@ -427,16 +447,18 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
 
     # user/group management error
     async def fake_exchange6(request):
-        return {
-            "access_token": "a",
-            "id_token": "i",
-            "userinfo": {"email": "e@x.com", "name": "Name", "groups": ["users"]},
-        }
+        return {"access_token": "a", "id_token": "i"}
 
     monkeypatch.setattr(
         auth_router_mod.oauth.oidc,
         "authorize_access_token",
         fake_exchange6,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "userinfo",
+        lambda **kwargs: {"email": "e@x.com", "name": "Name", "groups": ["users"]},
         raising=False,
     )
     # monkeypatch user module to raise

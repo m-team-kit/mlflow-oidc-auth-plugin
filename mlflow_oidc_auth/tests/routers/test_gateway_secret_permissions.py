@@ -55,11 +55,13 @@ class TestGatewaySecretPermissionRoutes:
         assert len(body) == 2
         assert {
             "name": "admin@example.com",
+            "display_name": "Admin User",
             "permission": "MANAGE",
             "kind": "user",
         } in body
         assert {
             "name": "user@example.com",
+            "display_name": "Regular User",
             "permission": "READ",
             "kind": "user",
         } in body
