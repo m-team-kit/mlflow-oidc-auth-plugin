@@ -80,9 +80,13 @@ export function EntityPermissionsManager({
     handleClearSearch,
   } = useSearch();
 
-  const filteredPermissions = permissions.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-  );
+  const filteredPermissions = permissions.filter((p) => {
+    const term = submittedTerm.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(term) ||
+      (p.display_name ?? "").toLowerCase().includes(term)
+    );
+  });
 
   const columns: ColumnConfig<EntityPermission>[] = [
     {
