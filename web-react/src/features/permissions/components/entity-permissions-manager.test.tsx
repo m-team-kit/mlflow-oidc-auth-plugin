@@ -133,13 +133,14 @@ describe("EntityPermissionsManager", () => {
 
   it("opens grant user modal", async () => {
     renderManager();
-    const addButton = screen.getByRole("button", { name: /^\+ Add$/ }); // First "+ Add" button is for users
+    const addButton = screen.getByRole("button", { name: /^\+ Add$/ });
     fireEvent.click(addButton);
 
     expect(screen.getByText(/Grant user permissions/i)).toBeDefined();
 
-    const select = screen.getByLabelText(/User/i);
-    fireEvent.change(select, { target: { value: "user2" } });
+    // user1 is already in permissions, so only user2 is available
+    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "user" } });
+    fireEvent.click(screen.getByText("User Two (user2)"));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     fireEvent.click(saveButton);
@@ -160,8 +161,8 @@ describe("EntityPermissionsManager", () => {
       screen.getByText(/Grant service account permissions/i),
     ).toBeDefined();
 
-    const select = screen.getByLabelText(/Service account/i);
-    fireEvent.change(select, { target: { value: "sa1" } });
+    fireEvent.change(screen.getByLabelText(/Service account/i), { target: { value: "sa" } });
+    fireEvent.click(screen.getByText("Service Account 1 (sa1)"));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     fireEvent.click(saveButton);
@@ -178,8 +179,9 @@ describe("EntityPermissionsManager", () => {
 
     expect(screen.getByText(/Grant group permissions/i)).toBeDefined();
 
-    const select = screen.getByLabelText(/Group/i);
-    fireEvent.change(select, { target: { value: "group2" } });
+    // group1 is already in permissions, so only group2 is available
+    fireEvent.change(screen.getByLabelText(/Group/i), { target: { value: "group" } });
+    fireEvent.click(screen.getByText("group2"));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     fireEvent.click(saveButton);
@@ -209,28 +211,20 @@ describe("EntityPermissionsManager", () => {
     // user1 and group1 are already in mockPermissions
     renderManager();
 
-    // Open user grant modal
+    // Open user grant modal — type to reveal results; user1 should be absent, user2 present
     fireEvent.click(screen.getByRole("button", { name: /^\+ Add$/ }));
-    const userOptions = screen.getAllByRole("option");
-    // Options should be: "Select user...", "user2"
-    expect(userOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "user2",
-    );
-    expect(
-      userOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("user1");
+    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "user" } });
+    const userModal = screen.getByRole("dialog");
+    expect(userModal.textContent).toContain("User Two (user2)");
+    expect(userModal.textContent).not.toContain("User One (user1)");
 
-    // Close modal (mocking doesn't really close it here, but we can just check groups)
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
 
-    // Open group grant modal
+    // Open group grant modal — type to reveal results; group1 absent, group2 present
     fireEvent.click(screen.getByRole("button", { name: /\+ Add Group/i }));
-    const groupOptions = screen.getAllByRole("option");
-    expect(groupOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "group2",
-    );
-    expect(
-      groupOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("group1");
+    fireEvent.change(screen.getByLabelText(/Group/i), { target: { value: "group" } });
+    const groupModal = screen.getByRole("dialog");
+    expect(groupModal.textContent).toContain("group2");
+    expect(groupModal.textContent).not.toContain("group1");
   });
 });

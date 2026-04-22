@@ -265,16 +265,6 @@ describe("NormalPermissionsView", () => {
 
   types.forEach((type) => {
     describe(`Type: ${type}`, () => {
-      const getExpectedValue = (t: string) => {
-        if (t === "experiments") return "new1";
-        if (t === "models") return "New Model";
-        if (t === "prompts") return "New Prompt";
-        if (t === "ai-endpoints") return "New Endpoint";
-        if (t === "ai-secrets") return "New Secret";
-        if (t === "ai-models") return "New AI Model";
-        throw new Error(`Unknown type in getExpectedValue: ${t}`);
-      };
-
       it(`renders table with data for ${type}`, () => {
         render(
           <NormalPermissionsView
@@ -310,7 +300,20 @@ describe("NormalPermissionsView", () => {
                     : /Add AI endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
-        const labelText =
+        // Type to reveal results, then click the option
+        const optionLabel =
+          type === "experiments"
+            ? "New Exp"
+            : type === "models"
+              ? "New Model"
+              : type === "prompts"
+                ? "New Prompt"
+                : type === "ai-endpoints"
+                  ? "New Endpoint"
+                  : type === "ai-secrets"
+                    ? "New Secret"
+                    : "New AI Model";
+        const searchLabel =
           type === "experiments"
             ? /Experiment/i
             : type === "models"
@@ -322,8 +325,8 @@ describe("NormalPermissionsView", () => {
                   : type === "ai-models"
                     ? /AI Model/i
                     : /AI Endpoint/i;
-        const select = screen.getByLabelText(labelText);
-        fireEvent.change(select, { target: { value: getExpectedValue(type) } });
+        fireEvent.change(screen.getByLabelText(searchLabel), { target: { value: "new" } });
+        fireEvent.click(screen.getByText(optionLabel));
 
         const saveButton = screen.getByRole("button", { name: /^Save$/i });
         fireEvent.click(saveButton);

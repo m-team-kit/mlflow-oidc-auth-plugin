@@ -173,9 +173,10 @@ class TestScorerPermissionRoutes:
 
         assert resp.status_code == 200
         assert resp.json() == [
-            {"name": "user@example.com", "permission": "READ", "kind": "user"},
+            {"name": "user@example.com", "display_name": "Regular User", "permission": "READ", "kind": "user"},
             {
                 "name": "service@example.com",
+                "display_name": "Service Account",
                 "permission": "MANAGE",
                 "kind": "service-account",
             },
