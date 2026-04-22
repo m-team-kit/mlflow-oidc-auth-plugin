@@ -18,13 +18,6 @@ export const getSidebarData = (
   genAiGatewayEnabled: boolean,
 ): NavLinkData[] => {
   const baseLinks: NavLinkData[] = [
-    { label: "Users", href: "/users", isInternalLink: true, icon: faUser },
-    {
-      label: "Service Accounts",
-      href: "/service-accounts",
-      isInternalLink: true,
-      icon: faScrewdriver,
-    },
     {
       label: "Groups",
       href: "/groups",
@@ -60,6 +53,7 @@ export const getSidebarData = (
         href: "/ai-gateway/ai-endpoints",
         isInternalLink: true,
         icon: faLink,
+        dividerBefore: true,
       },
       {
         label: "AI Secrets",
@@ -79,6 +73,19 @@ export const getSidebarData = (
 
   if (isAdmin) {
     const adminLinks: NavLinkData[] = [
+      {
+        label: "Users",
+        href: "/users",
+        isInternalLink: true,
+        icon: faUser,
+        dividerBefore: true,
+      },
+      {
+        label: "Service Accounts",
+        href: "/service-accounts",
+        isInternalLink: true,
+        icon: faScrewdriver,
+      },
       { label: "Trash", href: "/trash", isInternalLink: true, icon: faTrash },
       {
         label: "Webhooks",

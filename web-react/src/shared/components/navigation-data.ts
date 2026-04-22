@@ -5,6 +5,7 @@ export type NavLinkData = {
   href: string;
   isInternalLink?: boolean;
   icon?: IconDefinition;
+  dividerBefore?: boolean;
 };
 
 export type NavigationData = {
