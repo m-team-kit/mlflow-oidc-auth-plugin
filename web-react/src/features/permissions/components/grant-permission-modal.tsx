@@ -44,9 +44,11 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
 
   const filteredOptions = useMemo(
     () =>
-      normalizedOptions.filter((opt) =>
-        opt.label.toLowerCase().includes(searchTerm.toLowerCase()),
-      ),
+      searchTerm
+        ? normalizedOptions.filter((opt) =>
+            opt.label.toLowerCase().includes(searchTerm.toLowerCase()),
+          )
+        : [],
     [normalizedOptions, searchTerm],
   );
 
@@ -74,29 +76,31 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
           containerClassName="mb-2"
           autoComplete="off"
         />
-        <div className="border border-ui-border dark:border-ui-border-dark rounded-md overflow-y-auto max-h-48">
-          {filteredOptions.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-text-secondary dark:text-text-secondary-dark">
-              No {label.toLowerCase()}s found
-            </p>
-          ) : (
-            filteredOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors
-                  ${
-                    selectedUsername === opt.value
-                      ? "bg-btn-primary text-white dark:bg-btn-primary-dark dark:text-white"
-                      : "hover:bg-ui-secondary-bg dark:hover:bg-ui-secondary-bg-dark text-ui-text dark:text-ui-text-dark"
-                  }`}
-                onClick={() => setSelectedUsername(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))
-          )}
-        </div>
+        {searchTerm && (
+          <div className="border border-ui-border dark:border-ui-border-dark rounded-md overflow-y-auto max-h-48">
+            {filteredOptions.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-text-secondary dark:text-text-secondary-dark">
+                No {label.toLowerCase()}s found
+              </p>
+            ) : (
+              filteredOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors
+                    ${
+                      selectedUsername === opt.value
+                        ? "bg-btn-primary text-white dark:bg-btn-primary-dark dark:text-white"
+                        : "hover:bg-ui-secondary-bg dark:hover:bg-ui-secondary-bg-dark text-ui-text dark:text-ui-text-dark"
+                    }`}
+                  onClick={() => setSelectedUsername(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))
+            )}
+          </div>
+        )}
         {selectedLabel && (
           <p className="mt-1 text-sm text-text-secondary dark:text-text-secondary-dark">
             Selected: <span className="font-medium">{selectedLabel}</span>
