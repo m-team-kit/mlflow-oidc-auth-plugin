@@ -116,6 +116,11 @@ def mock_store():
     store_mock.authenticate_user.return_value = True
 
     store_mock.list_users.return_value = [admin_user, regular_user, service_user]
+    store_mock.list_usernames.return_value = [
+        "admin@example.com",
+        "user@example.com",
+        "service@example.com",
+    ]
     store_mock.create_user.return_value = True
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
@@ -292,6 +297,7 @@ def mock_config():
     config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
     config_mock.OIDC_GROUP_NAME = ["user-group", "test-group"]
     config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
+    config_mock.MLFLOW_ENABLE_WORKSPACES = False
     config_mock.PRIVACY_POLICY_URL = None
     config_mock.TERMS_OF_SERVICE_URL = None
     return config_mock
@@ -369,6 +375,14 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store),
         patch(
             "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.workspace_permissions.store",
+            mock_store,
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.workspace_regex_permissions.store",
             mock_store,
         ),
         # Patch filter_manageable_* functions at router level so integration tests work

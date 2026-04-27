@@ -21,9 +21,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   widthClass,
 }) => {
   const isAdmin = currentUser?.is_admin ?? false;
-  const { gen_ai_gateway_enabled: genAiGatewayEnabled } = useRuntimeConfig();
+  const {
+    gen_ai_gateway_enabled: genAiGatewayEnabled,
+    workspaces_enabled: workspacesEnabled,
+  } = useRuntimeConfig();
 
-  const sidebarData = getSidebarData(isAdmin, genAiGatewayEnabled);
+  const sidebarData = getSidebarData(
+    isAdmin,
+    genAiGatewayEnabled,
+    workspacesEnabled,
+  );
 
   const baseSidebarClasses =
     "flex-shrink-0 text-sm bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark";

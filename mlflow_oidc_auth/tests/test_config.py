@@ -102,6 +102,7 @@ class TestAppConfig(unittest.TestCase):
             "PERMISSION_SOURCE_ORDER",
             "EXTEND_MLFLOW_MENU",
             "DEFAULT_LANDING_PAGE_IS_PERMISSIONS",
+            "ENABLE_API_DOCS",
         ]
 
         for var in env_vars_to_clear:
@@ -130,6 +131,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
         self.assertTrue(config.EXTEND_MLFLOW_MENU)
         self.assertTrue(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
+        self.assertFalse(config.ENABLE_API_DOCS)
 
     def test_app_config_environment_variable_override(self):
         """Test that environment variables override default values."""
@@ -152,6 +154,7 @@ class TestAppConfig(unittest.TestCase):
             "PERMISSION_SOURCE_ORDER": "group,user,regex",
             "EXTEND_MLFLOW_MENU": "false",
             "DEFAULT_LANDING_PAGE_IS_PERMISSIONS": "false",
+            "ENABLE_API_DOCS": "false",
         }
 
         with patch.dict(os.environ, test_env):
@@ -178,6 +181,7 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["group", "user", "regex"])
             self.assertFalse(config.EXTEND_MLFLOW_MENU)
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
+            self.assertFalse(config.ENABLE_API_DOCS)
 
     def test_app_config_group_name_parsing(self):
         """Test that OIDC_GROUP_NAME is correctly parsed from comma-separated values."""
@@ -300,6 +304,53 @@ class TestAppConfig(unittest.TestCase):
             with patch.dict(os.environ, {"OIDC_USERS_DB_URI": uri}):
                 config = AppConfig()
                 self.assertEqual(config.OIDC_USERS_DB_URI, uri)
+
+    def test_workspace_feature_flags_defaults(self):
+        """Test that workspace feature flags have correct default values."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = AppConfig()
+            self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+
+    def test_workspace_feature_flags_override(self):
+        """Test that workspace feature flags can be overridden via environment variables."""
+        with patch.dict(
+            os.environ,
+            {
+                "MLFLOW_ENABLE_WORKSPACES": "true",
+            },
+        ):
+            config = AppConfig()
+            self.assertTrue(config.MLFLOW_ENABLE_WORKSPACES)
+
+    def test_workspace_feature_flags_disabled_by_default(self):
+        """Test that workspaces are disabled by default."""
+        # Ensure env var is not set
+        if "MLFLOW_ENABLE_WORKSPACES" in os.environ:
+            del os.environ["MLFLOW_ENABLE_WORKSPACES"]
+
+        config = AppConfig()
+        self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+
+    def test_secret_key_fallback_logs_warning(self):
+        """Test that a WARNING is logged when SECRET_KEY is not configured."""
+        if "SECRET_KEY" in os.environ:
+            del os.environ["SECRET_KEY"]
+
+        with patch("mlflow_oidc_auth.config.logger") as mock_logger:
+            config = AppConfig()
+            mock_logger.warning.assert_called_once()
+            warning_msg = mock_logger.warning.call_args[0][0]
+            self.assertIn("SECRET_KEY is not configured", warning_msg)
+            # Should still generate a usable key
+            self.assertEqual(len(config.SECRET_KEY), 32)
+
+    def test_secret_key_configured_no_warning(self):
+        """Test that no warning is logged when SECRET_KEY is explicitly configured."""
+        with patch.dict(os.environ, {"SECRET_KEY": "my-production-secret"}):
+            with patch("mlflow_oidc_auth.config.logger") as mock_logger:
+                config = AppConfig()
+                mock_logger.warning.assert_not_called()
+                self.assertEqual(config.SECRET_KEY, "my-production-secret")
 
 
 if __name__ == "__main__":

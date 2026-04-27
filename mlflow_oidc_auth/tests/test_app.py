@@ -40,39 +40,37 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_config.ENABLE_API_DOCS = True
         mock_router1 = MagicMock()
         mock_router2 = MagicMock()
         mock_get_all_routers.return_value = [mock_router1, mock_router2]
 
-        # Mock getattr calls for API docs configuration
-        with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
-            mock_getattr.return_value = True  # ENABLE_API_DOCS = True
+        # Call the function
+        result = create_app()
 
-            # Call the function
-            result = create_app()
+        # Verify FastAPI app creation
+        assert isinstance(result, FastAPI)
+        assert result.title == "MLflow Tracking Server with OIDC Auth"
+        assert result.description == "MLflow Tracking Server API with OIDC Authentication"
+        assert result.version == "2.0.0"
+        assert result.docs_url == "/docs"
+        assert result.redoc_url == "/redoc"
+        assert result.openapi_url == "/openapi.json"
 
-            # Verify FastAPI app creation
-            assert isinstance(result, FastAPI)
-            assert result.title == "MLflow Tracking Server with OIDC Auth"
-            assert result.description == "MLflow Tracking Server API with OIDC Authentication"
-            assert result.version == "2.0.0"
-            assert result.docs_url == "/docs"
-            assert result.redoc_url == "/redoc"
-            assert result.openapi_url == "/openapi.json"
+        # Verify exception handlers were registered
+        mock_register_exception_handlers.assert_called_once_with(result)
 
-            # Verify exception handlers were registered
-            mock_register_exception_handlers.assert_called_once_with(result)
+        # Verify middleware was added
+        # Note: We can't easily verify middleware addition without inspecting internal state
 
-            # Verify middleware was added
-            # Note: We can't easily verify middleware addition without inspecting internal state
+        # Verify routers were included
+        mock_get_all_routers.assert_called_once()
 
-            # Verify routers were included
-            mock_get_all_routers.assert_called_once()
-
-            # Verify Flask app configuration
-            assert mock_flask_app.secret_key == "test-secret-key"
-            mock_flask_app.before_request.assert_called_once_with(mock_before_request_hook)
-            mock_flask_app.after_request.assert_called_once_with(mock_after_request_hook)
+        # Verify Flask app configuration
+        assert mock_flask_app.secret_key == "test-secret-key"
+        mock_flask_app.before_request.assert_called_once_with(mock_before_request_hook)
+        mock_flask_app.after_request.assert_called_once_with(mock_after_request_hook)
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -98,19 +96,17 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_config.ENABLE_API_DOCS = False
         mock_get_all_routers.return_value = []
 
-        # Mock getattr calls for API docs configuration
-        with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
-            mock_getattr.return_value = False  # ENABLE_API_DOCS = False
+        # Call the function
+        result = create_app()
 
-            # Call the function
-            result = create_app()
-
-            # Verify API docs are disabled
-            assert result.docs_url is None
-            assert result.redoc_url is None
-            assert result.openapi_url is None
+        # Verify API docs are disabled
+        assert result.docs_url is None
+        assert result.redoc_url is None
+        assert result.openapi_url is None
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -135,6 +131,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_flask_app.view_functions = {}
 
@@ -173,6 +170,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
         # Create mock routers
         mock_router1 = MagicMock()
@@ -219,6 +217,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key-123"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -255,6 +254,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -263,8 +263,8 @@ class TestCreateApp:
             # Call the function
             create_app()
 
-            # Verify logging occurred
-            mock_logger.info.assert_called_once_with("MLflow Flask app mounted at / with FastAPI auth info passing")
+            # Verify logging occurred (includes MLflow FastAPI router inclusion logs)
+            mock_logger.info.assert_any_call("MLflow Flask app mounted at / with FastAPI auth info passing")
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -289,6 +289,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -323,6 +324,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -359,6 +361,7 @@ class TestCreateApp:
         test_secret_key = "super-secret-test-key-12345"
         mock_config.SECRET_KEY = test_secret_key
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -393,6 +396,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []  # Empty list
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -404,43 +408,6 @@ class TestCreateApp:
             # Verify app was created successfully even with no routers
             assert isinstance(result, FastAPI)
             mock_get_all_routers.assert_called_once()
-
-    @patch("mlflow_oidc_auth.app.config")
-    @patch("mlflow_oidc_auth.app.register_exception_handlers")
-    @patch("mlflow_oidc_auth.app.get_all_routers")
-    @patch("mlflow_oidc_auth.app.AuthMiddleware")
-    @patch("mlflow_oidc_auth.app.AuthAwareWSGIMiddleware")
-    @patch("mlflow_oidc_auth.app.app")
-    @patch("mlflow_oidc_auth.app.before_request_hook")
-    @patch("mlflow_oidc_auth.app.after_request_hook")
-    def test_create_app_getattr_missing_attribute(
-        self,
-        mock_after_request_hook,
-        mock_before_request_hook,
-        mock_flask_app,
-        mock_auth_aware_wsgi_middleware,
-        mock_auth_middleware,
-        mock_get_all_routers,
-        mock_register_exception_handlers,
-        mock_config,
-    ):
-        """Test application creation when ENABLE_API_DOCS attribute is missing from config."""
-        # Setup mocks
-        mock_config.SECRET_KEY = "test-secret-key"
-        mock_config.EXTEND_MLFLOW_MENU = False
-        mock_get_all_routers.return_value = []
-
-        # Mock getattr to return default value when attribute is missing
-        with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
-            mock_getattr.side_effect = lambda obj, attr, default: default
-
-            # Call the function
-            result = create_app()
-
-            # Verify app was created with default API docs settings (True)
-            assert result.docs_url == "/docs"
-            assert result.redoc_url == "/redoc"
-            assert result.openapi_url == "/openapi.json"
 
 
 class TestAppModuleImports:
@@ -495,6 +462,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.side_effect = Exception("Router loading failed")
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -527,6 +495,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_register_exception_handlers.side_effect = Exception("Exception handler registration failed")
 
@@ -560,6 +529,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_flask_app.view_functions = {}
 
@@ -570,6 +540,7 @@ class TestAppErrorHandling:
             # we'll test the behavior when EXTEND_MLFLOW_MENU is False instead
             # This ensures the hack import code path is not executed
             mock_config.EXTEND_MLFLOW_MENU = False
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
             # Call the function
             create_app()
@@ -604,6 +575,7 @@ class TestAppConfiguration:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         test_versions = ["1.0.0", "2.5.1", "3.0.0-dev"]
@@ -653,6 +625,7 @@ class TestAppConfiguration:
         ]
 
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         for secret_key in special_secret_keys:
