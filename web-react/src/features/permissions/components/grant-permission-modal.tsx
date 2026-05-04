@@ -42,15 +42,20 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
     [options],
   );
 
-  const filteredOptions = useMemo(
-    () =>
-      searchTerm
-        ? normalizedOptions.filter((opt) =>
-            opt.label.toLowerCase().includes(searchTerm.toLowerCase()),
-          )
-        : [],
-    [normalizedOptions, searchTerm],
-  );
+  const MIN_SEARCH_LENGTH = 3;
+  const MAX_RESULTS = 20;
+
+  const filteredOptions = useMemo(() => {
+    if (searchTerm.length < MIN_SEARCH_LENGTH) return [];
+    const needle = searchTerm.toLowerCase();
+    return normalizedOptions
+      .filter(
+        (opt) =>
+          opt.label.toLowerCase().includes(needle) ||
+          opt.value.toLowerCase().includes(needle),
+      )
+      .slice(0, MAX_RESULTS);
+  }, [normalizedOptions, searchTerm]);
 
   const selectedLabel = normalizedOptions.find(
     (o) => o.value === selectedUsername,
@@ -78,26 +83,43 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         />
         {searchTerm && (
           <div className="border border-ui-border dark:border-ui-border-dark rounded-md overflow-y-auto max-h-48">
-            {filteredOptions.length === 0 ? (
+            {searchTerm.length < MIN_SEARCH_LENGTH ? (
+              <p className="px-3 py-2 text-sm text-text-secondary dark:text-text-secondary-dark">
+                Type at least {MIN_SEARCH_LENGTH} characters to search
+              </p>
+            ) : filteredOptions.length === 0 ? (
               <p className="px-3 py-2 text-sm text-text-secondary dark:text-text-secondary-dark">
                 No {label.toLowerCase()}s found
               </p>
             ) : (
-              filteredOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={`w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors
-                    ${
-                      selectedUsername === opt.value
-                        ? "bg-btn-primary text-white dark:bg-btn-primary-dark dark:text-white"
-                        : "hover:bg-ui-secondary-bg dark:hover:bg-ui-secondary-bg-dark text-ui-text dark:text-ui-text-dark"
-                    }`}
-                  onClick={() => setSelectedUsername(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))
+              <>
+                {filteredOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors
+                      ${
+                        selectedUsername === opt.value
+                          ? "bg-btn-primary text-white dark:bg-btn-primary-dark dark:text-white"
+                          : "hover:bg-ui-secondary-bg dark:hover:bg-ui-secondary-bg-dark text-ui-text dark:text-ui-text-dark"
+                      }`}
+                    onClick={() => setSelectedUsername(opt.value)}
+                  >
+                    {opt.label !== opt.value ? (
+                      <>
+                        {opt.label} <span className="opacity-60">({opt.value})</span>
+                      </>
+                    ) : (
+                      opt.label
+                    )}
+                  </button>
+                ))}
+                {filteredOptions.length === MAX_RESULTS && (
+                  <p className="px-3 py-2 text-xs text-text-secondary dark:text-text-secondary-dark opacity-70 border-t border-ui-border dark:border-ui-border-dark">
+                    Showing first {MAX_RESULTS} matches — refine your search to narrow results
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}

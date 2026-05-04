@@ -54,7 +54,7 @@ describe("GrantPermissionModal", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "use" } });
     fireEvent.click(screen.getByText("user1"));
 
     const permSelect = screen.getByLabelText(/Permissions/i);
@@ -82,7 +82,7 @@ describe("GrantPermissionModal", () => {
     );
 
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "u" } });
+    fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "use" } });
     fireEvent.click(screen.getByText("user1"));
     expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
   });
