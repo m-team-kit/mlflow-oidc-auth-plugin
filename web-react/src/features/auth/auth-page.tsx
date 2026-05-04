@@ -71,9 +71,9 @@ export const AuthPage = () => {
       <footer className="w-full py-6 flex flex-col ml-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
         <div className="flex gap-4">
           <span>&copy; {currentYear} mlflow-oidc-auth</span>
-          {config.privacyPolicyUrl != null && (
+          {config.termsOfServiceUrl != null && (
             <a
-              href={config.privacyPolicyUrl}
+              href={config.termsOfServiceUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
@@ -81,9 +81,9 @@ export const AuthPage = () => {
               Terms of service
             </a>
           )}
-          {config.termsOfServiceUrl != null && (
+          {config.privacyPolicyUrl != null && (
             <a
-              href={config.termsOfServiceUrl}
+              href={config.privacyPolicyUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
