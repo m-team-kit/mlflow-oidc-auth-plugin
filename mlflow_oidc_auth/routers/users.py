@@ -177,7 +177,7 @@ async def list_users(service: bool = False, username: str = Depends(get_username
 
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
-        users = store.list_basic_users(is_service_account=service)
+        users = store.list_users(is_service_account=service)
 
         users = [{"username": u.username, "display_name": u.display_name} for u in users]
 
