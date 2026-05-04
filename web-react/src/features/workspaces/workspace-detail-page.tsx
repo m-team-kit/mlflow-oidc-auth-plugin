@@ -60,8 +60,8 @@ export default function WorkspaceDetailPage() {
   const existingUsernames = new Set(workspaceUsers.map((wu) => wu.username));
   const existingGroupNames = new Set(workspaceGroups.map((wg) => wg.group_name));
 
-  const availableUsers = (allUsers || []).filter((u) => !existingUsernames.has(u));
-  const availableAccounts = (allServiceAccounts || []).filter((u) => !existingUsernames.has(u));
+  const availableUsers = (allUsers || []).filter((u) => !existingUsernames.has(u.username));
+  const availableAccounts = (allServiceAccounts || []).filter((u) => !existingUsernames.has(u.username));
   const availableGroups = (allGroups || []).filter((g) => !existingGroupNames.has(g));
 
   // Derive canManage: admin OR user has direct MANAGE OR user's group has MANAGE
@@ -249,7 +249,7 @@ export default function WorkspaceDetailPage() {
           }}
           title={`Grant user permissions for workspace ${workspaceName}`}
           label="User"
-          options={availableUsers}
+          options={availableUsers.map((u) => ({ label: u.display_name || u.username, value: u.username }))}
           type="experiments"
           isLoading={isSaving}
         />
@@ -270,7 +270,7 @@ export default function WorkspaceDetailPage() {
           }}
           title={`Grant service account permissions for workspace ${workspaceName}`}
           label="Service Account"
-          options={availableAccounts}
+          options={availableAccounts.map((u) => ({ label: u.display_name || u.username, value: u.username }))}
           type="experiments"
           isLoading={isSaving}
         />
@@ -305,7 +305,7 @@ export default function WorkspaceDetailPage() {
         onSuccess={refreshUsers}
         title="Bulk Assign Users"
         nameLabel="Users"
-        options={[...availableUsers, ...availableAccounts]}
+        options={[...availableUsers, ...availableAccounts].map((u) => ({ label: u.display_name || u.username, value: u.username }))}
       />
       <BulkAssignModal
         isOpen={bulkAssignTarget === "groups"}
@@ -314,7 +314,7 @@ export default function WorkspaceDetailPage() {
         onSuccess={refreshGroups}
         title="Bulk Assign Groups"
         nameLabel="Groups"
-        options={availableGroups}
+        options={availableGroups.map((g) => ({ label: g, value: g }))}
       />
     </PageContainer>
   );

@@ -45,7 +45,11 @@ describe("BulkAssignModal", () => {
     onSuccess: vi.fn(),
     title: "Bulk Assign Users",
     nameLabel: "Users",
-    options: ["alice", "bob", "charlie"],
+    options: [
+      { label: "alice", value: "alice" },
+      { label: "bob", value: "bob" },
+      { label: "charlie", value: "charlie" },
+    ],
   };
 
   beforeEach(() => {

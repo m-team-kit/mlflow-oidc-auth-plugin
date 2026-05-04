@@ -5,6 +5,11 @@ import { PermissionLevelSelect } from "../../../shared/components/permission-lev
 import { useToast } from "../../../shared/components/toast/use-toast";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
+interface BulkAssignOption {
+  label: string;
+  value: string;
+}
+
 interface BulkAssignModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,11 +17,12 @@ interface BulkAssignModalProps {
   onSuccess: () => void;
   title: string;
   nameLabel: string;
-  options: string[];
+  options: BulkAssignOption[];
 }
 
 interface BulkAssignResult {
-  name: string;
+  label: string;
+  value: string;
   success: boolean;
 }
 
@@ -28,15 +34,17 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const [filterText, setFilterText] = useState("");
 
-  const filteredOptions = options.filter((name) => name.toLowerCase().includes(filterText.toLowerCase()));
+  const filteredOptions = options.filter(
+    (opt) => opt.label.toLowerCase().includes(filterText.toLowerCase()) || opt.value.toLowerCase().includes(filterText.toLowerCase()),
+  );
 
-  const handleToggle = (name: string) => {
+  const handleToggle = (value: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
+      if (next.has(value)) {
+        next.delete(value);
       } else {
-        next.add(name);
+        next.add(value);
       }
       return next;
     });
@@ -45,12 +53,12 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
 
   const handleSelectAll = () => {
     setSelected((prev) => {
-      const allFilteredSelected = filteredOptions.every((o) => prev.has(o));
+      const allFilteredSelected = filteredOptions.every((o) => prev.has(o.value));
       const next = new Set(prev);
       if (allFilteredSelected) {
-        filteredOptions.forEach((o) => next.delete(o));
+        filteredOptions.forEach((o) => next.delete(o.value));
       } else {
-        filteredOptions.forEach((o) => next.add(o));
+        filteredOptions.forEach((o) => next.add(o.value));
       }
       return next;
     });
@@ -58,8 +66,8 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
   };
 
   const handleSubmit = async () => {
-    const names = Array.from(selected);
-    if (names.length === 0) {
+    const selectedOptions = options.filter((o) => selected.has(o.value));
+    if (selectedOptions.length === 0) {
       showToast("No items selected", "error");
       return;
     }
@@ -67,9 +75,9 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
     setIsSubmitting(true);
     const collected: BulkAssignResult[] = [];
 
-    for (const name of names) {
-      const success = await onGrant(name, permission);
-      collected.push({ name, success });
+    for (const opt of selectedOptions) {
+      const success = await onGrant(opt.value, permission);
+      collected.push({ label: opt.label, value: opt.value, success });
     }
 
     setResults(collected);
@@ -95,9 +103,9 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
     onClose();
   };
 
-  const failedNames = results?.filter((r) => !r.success).map((r) => r.name) ?? [];
+  const failedItems = results?.filter((r) => !r.success) ?? [];
   const successCount = results?.filter((r) => r.success).length ?? 0;
-  const allFilteredSelected = filteredOptions.length > 0 && filteredOptions.every((o) => selected.has(o));
+  const allFilteredSelected = filteredOptions.length > 0 && filteredOptions.every((o) => selected.has(o.value));
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={title} width="max-w-lg">
@@ -132,18 +140,26 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
                 {filteredOptions.length === 0 ? (
                   <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60 p-3">No matches found.</p>
                 ) : (
-                  filteredOptions.map((name) => (
+                  filteredOptions.map((opt) => (
                     <label
-                      key={name}
+                      key={opt.value}
                       className="flex items-center px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                     >
                       <input
                         type="checkbox"
-                        checked={selected.has(name)}
-                        onChange={() => handleToggle(name)}
+                        checked={selected.has(opt.value)}
+                        onChange={() => handleToggle(opt.value)}
                         className="mr-2 rounded border-ui-border dark:border-ui-border-dark"
                       />
-                      <span className="text-sm text-ui-text dark:text-ui-text-dark truncate">{name}</span>
+                      <span className="text-sm text-ui-text dark:text-ui-text-dark truncate">
+                        {opt.label !== opt.value ? (
+                          <>
+                            {opt.label} <span className="opacity-60">({opt.value})</span>
+                          </>
+                        ) : (
+                          opt.label
+                        )}
+                      </span>
                     </label>
                   ))
                 )}
@@ -157,7 +173,7 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
         {results !== null && (
           <div className="mb-4 p-3 rounded-md bg-ui-bg dark:bg-ui-bg-dark border border-ui-border dark:border-ui-border-dark">
             {successCount > 0 && <p className="text-sm text-green-600 dark:text-green-400">{successCount} assigned successfully</p>}
-            {failedNames.length > 0 && <p className="text-sm text-red-600 dark:text-red-400">{failedNames.length} failed: {failedNames.join(", ")}</p>}
+            {failedItems.length > 0 && <p className="text-sm text-red-600 dark:text-red-400">{failedItems.length} failed: {failedItems.map((r) => r.label).join(", ")}</p>}
           </div>
         )}
 
