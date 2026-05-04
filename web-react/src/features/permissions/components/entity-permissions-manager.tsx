@@ -64,10 +64,10 @@ export function EntityPermissionsManager({
 
   const availableUsers = (allUsers || [])
     .filter((u) => !existingNames.has(u.username))
-    .map((u) => ({ label: `${u.display_name} (${u.username})`, value: u.username }));
+    .map((u) => ({ label: u.display_name, value: u.username }));
   const availableAccounts = (allServiceAccounts || [])
     .filter((u) => !existingNames.has(u.username))
-    .map((u) => ({ label: `${u.display_name} (${u.username})`, value: u.username }));
+    .map((u) => ({ label: u.display_name, value: u.username }));
   const availableGroups = (allGroups || []).filter(
     (groupname) => !existingNames.has(groupname),
   );
