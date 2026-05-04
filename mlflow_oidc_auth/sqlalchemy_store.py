@@ -363,6 +363,9 @@ class SqlAlchemyStore:
             is_service_account=is_service_account,
         )
 
+    def rename_user(self, old_username: str, new_username: str) -> User:
+        return self.user_repo.rename(old_username, new_username)
+
     def delete_user(self, username: str):
         return self.user_repo.delete(username)
 

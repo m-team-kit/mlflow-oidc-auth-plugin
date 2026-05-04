@@ -169,6 +169,19 @@ class UserRepository:
             session.flush()
             return user.to_mlflow_entity()
 
+    def rename(self, old_username: str, new_username: str) -> User:
+        _validate_username(new_username)
+        with self._Session() as session:
+            user = get_user(session, old_username)
+            if user is None:
+                raise MlflowException(f"User '{old_username}' not found.", RESOURCE_DOES_NOT_EXIST)
+            try:
+                user.username = new_username
+                session.flush()
+                return user.to_mlflow_entity()
+            except IntegrityError as e:
+                raise MlflowException(f"User '{new_username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
+
     def delete(self, username: str) -> None:
         with self._Session() as session:
             user = get_user(session, username)

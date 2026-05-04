@@ -444,6 +444,23 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                 errors.append("User is not allowed to login")
                 return None, errors
 
+            # Migration: if username source is not email, an existing legacy user may
+            # be keyed by email. Rename it to the configured username (e.g. sub) so the
+            # subsequent create_user call updates the same record instead of duplicating.
+            if config.OIDC_USERNAME_FIELD and config.OIDC_USERNAME_FIELD[0] != "email":
+                legacy_email = userinfo.get("email")
+                if isinstance(legacy_email, str):
+                    legacy_username = legacy_email.lower()
+                    if legacy_username and legacy_username != username:
+                        from mlflow_oidc_auth.store import store as _store
+
+                        if _store.user_repo.exist(legacy_username) and not _store.user_repo.exist(username):
+                            try:
+                                _store.rename_user(legacy_username, username)
+                                logger.info(f"Migrated legacy user '{legacy_username}' to '{username}'")
+                            except Exception as rename_err:
+                                logger.warning(f"Failed to migrate legacy user '{legacy_username}' to '{username}': {rename_err}")
+
             # Create/update user and groups using user_module so monkeypatched functions are used in tests
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
             user_module.populate_groups(group_names=user_groups)
