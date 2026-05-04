@@ -167,6 +167,7 @@ class AppConfig:
 
         self.PRIVACY_POLICY_URL = config_manager.get("PRIVACY_POLICY_URL")
         self.TERMS_OF_SERVICE_URL = config_manager.get("TERMS_OF_SERVICE_URL")
+        self.DOMAIN = config_manager.get("DOMAIN")
 
     def refresh(self) -> None:
         """Reload configuration from all providers.

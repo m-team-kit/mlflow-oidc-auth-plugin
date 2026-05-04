@@ -1,6 +1,7 @@
 import smtplib
 from email.mime.text import MIMEText
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -48,14 +49,17 @@ def send_soft_cap_warning(username: str, used_bytes: int, quota_bytes: int, pct:
     used_mb = used_bytes / (1024 * 1024)
     quota_mb = quota_bytes / (1024 * 1024)
     subject = f"MLflow storage quota warning: {pct:.0%} used"
+    domain = f"  Domain: {config.DOMAIN}\n" if config.DOMAIN else ""
     body = (
         f"Dear {username},\n\n"
         f"You are approaching your MLflow artifact storage quota.\n\n"
         f"  Used:  {used_mb:.1f} MB\n"
         f"  Quota: {quota_mb:.1f} MB\n"
         f"  Usage: {pct:.1%}\n\n"
+        f"{domain}"
         f"Please delete unused experiments or artifacts to free up space.\n"
-        f"When your quota is reached, new runs and artifact uploads will be blocked.\n"
+        f"When your quota is reached, new runs and artifact uploads will be blocked.\n\n"
+        f"Your MLflow support.\n"
     )
     return send_quota_email(email_address, subject, body)
 
@@ -67,12 +71,15 @@ def send_hard_cap_notification(username: str, used_bytes: int, quota_bytes: int,
     used_mb = used_bytes / (1024 * 1024)
     quota_mb = quota_bytes / (1024 * 1024)
     subject = "MLflow storage quota exceeded — uploads blocked"
+    domain = f"  Domain: {config.DOMAIN}\n" if config.DOMAIN else ""
     body = (
         f"Dear {username},\n\n"
         f"Your MLflow artifact storage quota has been reached.\n\n"
         f"  Used:  {used_mb:.1f} MB\n"
         f"  Quota: {quota_mb:.1f} MB\n\n"
+        f"{domain}"
         f"New experiment creation, run creation, and artifact uploads are now blocked.\n"
-        f"Please delete unused experiments or artifacts to restore access.\n"
+        f"Please delete unused experiments or artifacts to restore access.\n\n"
+        f"Your MLflow support.\n"
     )
     return send_quota_email(email_address, subject, body)
