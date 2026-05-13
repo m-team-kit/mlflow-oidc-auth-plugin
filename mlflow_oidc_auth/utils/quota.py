@@ -214,6 +214,16 @@ def _calculate_used_bytes(username: str) -> int:
                 remaining.discard(exp_id)
                 for run in runs:
                     total += _sum_artifacts(run.info.artifact_uri, "")
+                # Logged models can be attached directly to an experiment without
+                # belonging to any run, so their artifacts must be counted too.
+                try:
+                    logged_models = client.search_logged_models(experiment_ids=[exp_id])
+                except MlflowException as e:
+                    logger.warning(f"Could not list logged models for experiment {exp_id}: {e}")
+                    continue
+                for model in logged_models:
+                    if model.artifact_location:
+                        total += _sum_artifacts(model.artifact_location, "")
 
     if remaining:
         logger.warning(
