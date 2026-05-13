@@ -1,5 +1,6 @@
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Iterator, Optional, List
 
 if TYPE_CHECKING:
     from mlflow_oidc_auth.db.models.quota import SqlUserQuota
@@ -12,6 +13,56 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
+
+
+@contextmanager
+def _workspace_context(workspace_name: Optional[str]) -> Iterator[None]:
+    """Set the MLflow server-request workspace for the duration of the block.
+
+    Background jobs run outside of the request lifecycle, so
+    ``WorkspaceContextMiddleware`` never sets the workspace ContextVar.
+    With ``MLFLOW_ENABLE_WORKSPACES`` enabled, every tracking-store call
+    must run inside a workspace scope or MLflow raises
+    "Active workspace is required". This helper mirrors what the middleware
+    does for requests, scoped to a single block.
+
+    When workspaces are disabled this is a pass-through.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        yield
+        return
+
+    from mlflow.utils.workspace_context import (
+        clear_server_request_workspace,
+        set_server_request_workspace,
+    )
+
+    set_server_request_workspace(workspace_name)
+    try:
+        yield
+    finally:
+        clear_server_request_workspace()
+
+
+def _iter_workspace_names() -> Iterator[Optional[str]]:
+    """Yield each workspace name, or a single ``None`` when workspaces are disabled.
+
+    Falls back to a single ``None`` if the workspace store cannot be queried,
+    so that callers still attempt the operation once instead of skipping it
+    entirely.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        yield None
+        return
+
+    try:
+        from mlflow.server.handlers import _get_workspace_store
+
+        for ws in _get_workspace_store().list_workspaces():
+            yield ws.name
+    except Exception as e:
+        logger.warning(f"Could not enumerate workspaces, falling back to a single sweep: {e}")
+        yield None
 
 
 def effective_quota_bytes(quota: Optional["SqlUserQuota"]) -> Optional[int]:
@@ -129,21 +180,46 @@ def reconcile_user_quota(username: str) -> None:
 
 
 def _calculate_used_bytes(username: str) -> int:
-    """Sum artifact sizes across all experiments owned by the given user."""
+    """Sum artifact sizes across all experiments owned by the given user.
+
+    Experiments are workspace-scoped in MLflow. Each owned experiment is only
+    visible from inside its workspace's context, so when workspaces are enabled
+    we iterate over every workspace and try each experiment from within it,
+    skipping the ones not found in that workspace.
+    """
     import mlflow
+    from mlflow.exceptions import MlflowException
     from mlflow_oidc_auth.permissions import MANAGE
 
     client = mlflow.tracking.MlflowClient()
     total = 0
 
-    # Get all experiment_ids managed by this user
     user_perms = store.list_experiment_permissions(username)
     owned_experiment_ids = [p.experiment_id for p in user_perms if p.permission == MANAGE.name]
 
-    for exp_id in owned_experiment_ids:
-        runs = client.search_runs(experiment_ids=[exp_id])
-        for run in runs:
-            total += _sum_artifacts(run.info.artifact_uri, "")
+    if not owned_experiment_ids:
+        return 0
+
+    remaining = set(owned_experiment_ids)
+    for workspace_name in _iter_workspace_names():
+        if not remaining:
+            break
+        with _workspace_context(workspace_name):
+            for exp_id in list(remaining):
+                try:
+                    runs = client.search_runs(experiment_ids=[exp_id])
+                except MlflowException:
+                    # Experiment doesn't belong to this workspace — try the next one.
+                    continue
+                remaining.discard(exp_id)
+                for run in runs:
+                    total += _sum_artifacts(run.info.artifact_uri, "")
+
+    if remaining:
+        logger.warning(
+            f"Could not locate experiments {sorted(remaining)} for user {username} in any workspace; "
+            "they may have been hard-deleted outside the auth plugin."
+        )
 
     return total
 
@@ -191,7 +267,12 @@ def reconcile_all_quotas() -> Optional[List[str]]:
 
 
 def cleanup_trash(retention_days: int) -> None:
-    """Permanently delete soft-deleted experiments older than retention_days."""
+    """Permanently delete soft-deleted experiments older than retention_days.
+
+    Iterates over every workspace so that experiments soft-deleted in any
+    workspace are eligible for hard-deletion when ``MLFLOW_ENABLE_WORKSPACES``
+    is on. Workspace-disabled deployments fall through to a single pass.
+    """
     import time
     import mlflow
 
@@ -199,32 +280,37 @@ def cleanup_trash(retention_days: int) -> None:
     # MLflow uses milliseconds
     cutoff_ms = (time.time() - retention_days * 86400) * 1000
 
-    try:
-        deleted_experiments = client.search_experiments(
-            view_type=mlflow.entities.ViewType.DELETED_ONLY,
-        )
-        affected_owners = set()
-        for exp in deleted_experiments:
-            deletion_time = getattr(exp, "last_update_time", None) or getattr(exp, "creation_time", 0)
-            if deletion_time and deletion_time < cutoff_ms:
+    affected_owners = set()
+
+    for workspace_name in _iter_workspace_names():
+        with _workspace_context(workspace_name):
+            try:
+                deleted_experiments = client.search_experiments(
+                    view_type=mlflow.entities.ViewType.DELETED_ONLY,
+                )
+            except Exception as e:
+                logger.error(f"Error listing deleted experiments in workspace {workspace_name!r}: {e}")
+                continue
+
+            for exp in deleted_experiments:
+                deletion_time = getattr(exp, "last_update_time", None) or getattr(exp, "creation_time", 0)
+                if not (deletion_time and deletion_time < cutoff_ms):
+                    continue
+
                 owner = get_experiment_owner(exp.experiment_id)
                 try:
                     from mlflow.server.handlers import _get_tracking_store
-
                     from mlflow_oidc_auth.utils.trash_cleanup import hard_delete_experiment_with_runs
 
                     hard_delete_experiment_with_runs(exp.experiment_id, _get_tracking_store())
-                    logger.info(f"Permanently deleted experiment {exp.experiment_id} (owner: {owner})")
+                    logger.info(f"Permanently deleted experiment {exp.experiment_id} (owner: {owner}, workspace: {workspace_name})")
                     if owner:
                         affected_owners.add(owner)
                 except Exception as e:
-                    logger.error(f"Could not hard-delete experiment {exp.experiment_id}: {e}")
+                    logger.error(f"Could not hard-delete experiment {exp.experiment_id} in workspace {workspace_name!r}: {e}")
 
-        for owner in affected_owners:
-            try:
-                reconcile_user_quota(owner)
-            except Exception as e:
-                logger.error(f"Error reconciling quota for {owner} after trash cleanup: {e}")
-
-    except Exception as e:
-        logger.error(f"Error during trash cleanup: {e}")
+    for owner in affected_owners:
+        try:
+            reconcile_user_quota(owner)
+        except Exception as e:
+            logger.error(f"Error reconciling quota for {owner} after trash cleanup: {e}")
