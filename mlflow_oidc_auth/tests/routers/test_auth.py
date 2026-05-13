@@ -590,3 +590,345 @@ class TestProcessOIDCCallbackFastAPI:
             assert email is None
             assert len(errors) == 1
             assert "Failed to update user/groups" in errors[0]
+
+
+class TestProcessOIDCCallbackLegacyUserMigration:
+    """Tests for the legacy-email → configured-username migration in the callback."""
+
+    def _setup(self, mock_request_with_session, mock_oauth, mock_config, *, username, userinfo_email):
+        """Build a request/session/userinfo where the extracted username differs from the email claim.
+
+        Returns (request, patches_context) — caller adds user_module patches.
+        """
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+
+        mock_oauth.oidc.userinfo = AsyncMock(
+            return_value={
+                "email": userinfo_email,
+                "preferred_username": username,
+                "name": "Test User",
+                "groups": ["test-group"],
+            }
+        )
+
+        # Trigger the migration branch: OIDC_USERNAME_FIELD[0] != "email"
+        mock_config.OIDC_USERNAME_FIELD = ["preferred_username", "email"]
+        return request
+
+    @pytest.mark.asyncio
+    async def test_renames_legacy_user_and_updates_displayname(self, mock_request_with_session, mock_oauth, mock_config):
+        """Legacy user keyed by email is renamed to the new username and displayname updated."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            username="new-user-sub",
+            userinfo_email="legacy@example.com",
+        )
+
+        def has_user_side_effect(name):
+            return name == "legacy@example.com"
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("new-user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", side_effect=has_user_side_effect) as mock_has,
+            patch("mlflow_oidc_auth.user.rename_user") as mock_rename,
+            patch("mlflow_oidc_auth.user.update_user_displayname") as mock_update_dn,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "new-user-sub"
+        mock_rename.assert_called_once_with("legacy@example.com", "new-user-sub")
+        mock_update_dn.assert_called_once_with("new-user-sub", "Test User")
+        assert mock_has.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_skips_migration_when_legacy_user_absent(self, mock_request_with_session, mock_oauth, mock_config):
+        """No rename when the legacy email-keyed user does not exist."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            username="new-user-sub",
+            userinfo_email="legacy@example.com",
+        )
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("new-user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", return_value=False),
+            patch("mlflow_oidc_auth.user.rename_user") as mock_rename,
+            patch("mlflow_oidc_auth.user.update_user_displayname") as mock_update_dn,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "new-user-sub"
+        mock_rename.assert_not_called()
+        mock_update_dn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_migration_when_target_username_exists(self, mock_request_with_session, mock_oauth, mock_config):
+        """No rename when both legacy and target usernames already exist (avoid collision)."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            username="new-user-sub",
+            userinfo_email="legacy@example.com",
+        )
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("new-user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", return_value=True),
+            patch("mlflow_oidc_auth.user.rename_user") as mock_rename,
+            patch("mlflow_oidc_auth.user.update_user_displayname") as mock_update_dn,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "new-user-sub"
+        mock_rename.assert_not_called()
+        mock_update_dn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_migration_when_username_equals_email(self, mock_request_with_session, mock_oauth, mock_config):
+        """No rename when the configured username happens to equal the email claim."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            username="same@example.com",
+            userinfo_email="same@example.com",
+        )
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("same@example.com", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user") as mock_has,
+            patch("mlflow_oidc_auth.user.rename_user") as mock_rename,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "same@example.com"
+        mock_rename.assert_not_called()
+        mock_has.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_migration_when_username_field_is_email(self, mock_request_with_session, mock_oauth, mock_config):
+        """No rename when OIDC_USERNAME_FIELD[0] == 'email' (no migration needed)."""
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+        mock_oauth.oidc.userinfo = AsyncMock(
+            return_value={"email": "user@example.com", "name": "Test User", "groups": ["test-group"]}
+        )
+        mock_config.OIDC_USERNAME_FIELD = ["email", "preferred_username"]
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("user@example.com", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user") as mock_has,
+            patch("mlflow_oidc_auth.user.rename_user") as mock_rename,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "user@example.com"
+        mock_has.assert_not_called()
+        mock_rename.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_migration_rename_failure_does_not_block_login(self, mock_request_with_session, mock_oauth, mock_config, caplog):
+        """A failure during rename should be logged but not abort the login."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            username="new-user-sub",
+            userinfo_email="legacy@example.com",
+        )
+
+        def has_user_side_effect(name):
+            return name == "legacy@example.com"
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("new-user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", side_effect=has_user_side_effect),
+            patch("mlflow_oidc_auth.user.rename_user", side_effect=Exception("rename failed")) as mock_rename,
+            patch("mlflow_oidc_auth.user.update_user_displayname") as mock_update_dn,
+            patch("mlflow_oidc_auth.user.create_user") as mock_create,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "new-user-sub"
+        mock_rename.assert_called_once()
+        mock_update_dn.assert_not_called()
+        # Subsequent provisioning still runs
+        mock_create.assert_called_once()
+
+
+class TestProcessOIDCCallbackQuotaEmailUpdate:
+    """Tests for the quota-email sync in the callback."""
+
+    def _setup(self, mock_request_with_session, mock_oauth, mock_config, *, userinfo):
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=userinfo)
+        # Don't trigger migration branch
+        mock_config.OIDC_USERNAME_FIELD = ["email", "preferred_username"]
+        return request
+
+    @pytest.mark.asyncio
+    async def test_updates_quota_email_when_email_present(self, mock_request_with_session, mock_oauth, mock_config):
+        """update_quota_email is called with the real email claim from userinfo."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            userinfo={"email": "real@example.com", "name": "Test User", "groups": ["test-group"]},
+        )
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("real@example.com", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email") as mock_update_quota,
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "real@example.com"
+        mock_update_quota.assert_called_once_with("real@example.com", "real@example.com")
+
+    @pytest.mark.asyncio
+    async def test_uses_email_claim_not_username_for_quota(self, mock_request_with_session, mock_oauth, mock_config):
+        """When username differs from email, quota update uses the real email claim."""
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+        mock_oauth.oidc.userinfo = AsyncMock(
+            return_value={
+                "email": "real@example.com",
+                "preferred_username": "user-sub",
+                "name": "Test User",
+                "groups": ["test-group"],
+            }
+        )
+        mock_config.OIDC_USERNAME_FIELD = ["preferred_username", "email"]
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", return_value=False),
+            patch("mlflow_oidc_auth.user.rename_user"),
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email") as mock_update_quota,
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "user-sub"
+        mock_update_quota.assert_called_once_with("user-sub", "real@example.com")
+
+    @pytest.mark.asyncio
+    async def test_skips_quota_update_when_email_missing(self, mock_request_with_session, mock_oauth, mock_config):
+        """No quota update when userinfo has no email claim."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            userinfo={"preferred_username": "user-sub", "name": "Test User", "groups": ["test-group"]},
+        )
+        mock_config.OIDC_USERNAME_FIELD = ["preferred_username", "email"]
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("user-sub", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.has_user", return_value=False),
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email") as mock_update_quota,
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "user-sub"
+        mock_update_quota.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_quota_update_failure_does_not_block_login(self, mock_request_with_session, mock_oauth, mock_config):
+        """A failure inside update_quota_email is swallowed and login still succeeds."""
+        request = self._setup(
+            mock_request_with_session,
+            mock_oauth,
+            mock_config,
+            userinfo={"email": "real@example.com", "name": "Test User", "groups": ["test-group"]},
+        )
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.extract_username", return_value=("real@example.com", None)),
+            patch("mlflow_oidc_auth.routers.auth.extract_display_name", return_value=("Test User", None)),
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_quota_email", side_effect=Exception("quota write failed")) as mock_update_quota,
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "real@example.com"
+        mock_update_quota.assert_called_once()
