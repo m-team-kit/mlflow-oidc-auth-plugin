@@ -53,4 +53,7 @@ def get_logger() -> logging.Logger:
         log_level = VALID_LEVELS.get(log_level_str, logging.INFO)
         _logger.setLevel(log_level)
 
+        # mute unhelpful type annotation warnings
+        logging.getLogger("mlflow.types.type_hints").setLevel(logging.ERROR)
+
     return _logger
