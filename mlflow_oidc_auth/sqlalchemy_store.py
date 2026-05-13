@@ -1075,7 +1075,7 @@ class SqlAlchemyStore:
     def set_user_quota(self, username: str, quota_bytes, soft_cap_fraction=None):
       return self.quota_repo.set_quota(username, quota_bytes, soft_cap_fraction)
 
-    def update_quota_email(self, username: str, email) -> None:
+    def update_quota_email(self, username: str, email: str) -> None:
       return self.quota_repo.update_email(username, email)
 
     def delete_user_quota(self, username: str) -> None:

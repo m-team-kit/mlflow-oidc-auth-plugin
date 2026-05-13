@@ -45,5 +45,9 @@ def update_user_displayname(username: str, display_name: str) -> None:
     store.set_user_displayname(username, display_name)
 
 
+def update_quota_email(username: str, email: str) -> None:
+    store.update_quota_email(username, email)
+
+
 def rename_user(old_username: str, new_username: str) -> None:
     store.rename_user(old_username, new_username)

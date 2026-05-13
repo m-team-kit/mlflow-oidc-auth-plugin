@@ -535,12 +535,12 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             # which may be preferred_username). Only updates if a quota row already exists.
             real_email = userinfo.get("email")
             if real_email:
-                try:
-                    from mlflow_oidc_auth.store import store as _store
+              try:
+                from mlflow_oidc_auth.store import store as _store
 
-                    _store.update_quota_email(username, real_email)
-                except Exception as _e:
-                    logger.warning(f"Could not update quota email for {username}: {_e}")
+                user_module.update_quota_email(username, real_email)
+              except Exception as _e:
+                logger.warning(f"Could not update quota email for {username}: {_e}")
 
             logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
