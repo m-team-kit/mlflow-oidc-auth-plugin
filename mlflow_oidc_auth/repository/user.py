@@ -182,6 +182,19 @@ class UserRepository:
             except IntegrityError as e:
                 raise MlflowException(f"User '{new_username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
 
+    def update_displayname(self, username: str, display_name: str) -> User:
+      with self._Session() as session:
+        user = get_user(session, username)
+        if user is None:
+          raise MlflowException(f"User '{username}' not found.", RESOURCE_DOES_NOT_EXIST)
+        try:
+          user.display_name = display_name
+          session.flush()
+          return user.to_mlflow_entity()
+        except IntegrityError as e:
+          raise MlflowException(f"Could not update '{username}' display name: {e}", RESOURCE_ALREADY_EXISTS) from e
+
+
     def delete(self, username: str) -> None:
         with self._Session() as session:
             user = get_user(session, username)

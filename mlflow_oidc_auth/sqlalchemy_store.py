@@ -366,6 +366,9 @@ class SqlAlchemyStore:
     def rename_user(self, old_username: str, new_username: str) -> User:
         return self.user_repo.rename(old_username, new_username)
 
+    def set_user_displayname(self, username: str, display_name: str) -> User:
+        return self.user_repo.update_displayname(username, display_name)
+
     def delete_user(self, username: str):
         return self.user_repo.delete(username)
 

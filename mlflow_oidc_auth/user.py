@@ -12,6 +12,10 @@ def generate_token() -> str:
     return new_password
 
 
+def has_user(username: str) -> bool:
+  return store.has_user(username)
+
+
 def create_user(username: str, display_name: str, is_admin: bool = False, is_service_account: bool = False) -> tuple:
     try:
         user = store.get_user_profile(username)
@@ -35,3 +39,11 @@ def populate_groups(group_names: list) -> None:
 
 def update_user(username: str, group_names: list) -> None:
     store.set_user_groups(username, group_names)
+
+
+def update_user_displayname(username: str, display_name: str) -> None:
+    store.set_user_displayname(username, display_name)
+
+
+def rename_user(old_username: str, new_username: str) -> None:
+    store.rename_user(old_username, new_username)
