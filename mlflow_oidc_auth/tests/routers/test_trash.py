@@ -425,7 +425,7 @@ class TestAdditionalTrashBehaviour:
         assert "are not in deleted lifecycle stage" in payload["error"]
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.utils.trash_cleanup.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_delete_runs_and_experiments_happy_path(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
@@ -570,7 +570,7 @@ class TestAdditionalTrashBehaviour:
         assert excinfo.value.detail == "Failed to retrieve deleted runs"
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.utils.trash_cleanup.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_fetch_experiments_and_runs(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
@@ -755,7 +755,7 @@ class TestAdditionalTrashBehaviour:
         assert "not older than" in payload["error"]
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.utils.trash_cleanup.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_fetch_experiments_pages_and_runs(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
@@ -898,7 +898,7 @@ class TestAdditionalTrashBehaviour:
         assert excinfo.value.detail == "Failed to retrieve deleted runs"
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.utils.trash_cleanup.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_artifact_delete_exception_is_handled(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
@@ -932,7 +932,7 @@ class TestAdditionalTrashBehaviour:
         assert payload["deleted_runs"] == ["r1"]
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.utils.trash_cleanup.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_hard_delete_run_failure_records_failed_run(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()

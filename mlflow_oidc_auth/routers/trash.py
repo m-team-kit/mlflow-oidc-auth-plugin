@@ -7,9 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from mlflow.entities import ViewType
 from mlflow.entities.lifecycle_stage import LifecycleStage
-from mlflow.exceptions import InvalidUrlException, MlflowException
+from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
-from mlflow.store.artifact.artifact_repository_registry import get_artifact_repository
 from mlflow.tracking import _get_store
 from mlflow.utils.time import get_current_time_millis
 
@@ -375,30 +374,9 @@ async def permanently_delete_all_trashed_entities(
                     )
                     continue
 
-                # Delete artifacts
-                try:
-                    from mlflow.server.handlers import (
-                        _get_artifact_repo_mlflow_artifacts,
-                        _get_proxied_run_artifact_destination_path,
-                        _get_workspace_scoped_repo_path_if_enabled,
-                        _is_servable_proxied_run_artifact_root,
-                    )
+                from mlflow_oidc_auth.utils.trash_cleanup import hard_delete_run
 
-                    if _is_servable_proxied_run_artifact_root(run.info.artifact_uri):
-                        artifact_repo = _get_artifact_repo_mlflow_artifacts()
-                        artifact_path = _get_proxied_run_artifact_destination_path(run.info.artifact_uri)
-                        artifact_path = _get_workspace_scoped_repo_path_if_enabled(artifact_path)
-                        artifact_repo.delete_artifacts(artifact_path)
-                    else:
-                        artifact_repo = get_artifact_repository(run.info.artifact_uri)
-                        artifact_repo.delete_artifacts()
-                except InvalidUrlException as e:
-                    logger.warning(f"Could not delete artifacts for run {run_id}: {str(e)}")
-                except Exception as e:
-                    logger.warning(f"Error deleting artifacts for run {run_id}: {str(e)}")
-
-                # Hard delete the run
-                backend_store._hard_delete_run(run_id)
+                hard_delete_run(run_id, run.info.artifact_uri, backend_store)
                 deleted_runs.append(run_id)
                 logger.info(f"Permanently deleted run {run_id}")
 

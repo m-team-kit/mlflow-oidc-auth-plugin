@@ -209,9 +209,11 @@ def cleanup_trash(retention_days: int) -> None:
             if deletion_time and deletion_time < cutoff_ms:
                 owner = get_experiment_owner(exp.experiment_id)
                 try:
-                    # Hard-delete via underlying store
                     from mlflow.server.handlers import _get_tracking_store
-                    _get_tracking_store().delete_experiment(exp.experiment_id)
+
+                    from mlflow_oidc_auth.utils.trash_cleanup import hard_delete_experiment_with_runs
+
+                    hard_delete_experiment_with_runs(exp.experiment_id, _get_tracking_store())
                     logger.info(f"Permanently deleted experiment {exp.experiment_id} (owner: {owner})")
                     if owner:
                         affected_owners.add(owner)
