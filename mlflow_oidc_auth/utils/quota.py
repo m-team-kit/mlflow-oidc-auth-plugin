@@ -180,12 +180,20 @@ def reconcile_user_quota(username: str) -> None:
 
 
 def _calculate_used_bytes(username: str) -> int:
-    """Sum artifact sizes across all experiments owned by the given user.
+    """Sum artifact sizes across all experiments and registered models owned by the user.
 
-    Experiments are workspace-scoped in MLflow. Each owned experiment is only
-    visible from inside its workspace's context, so when workspaces are enabled
-    we iterate over every workspace and try each experiment from within it,
-    skipping the ones not found in that workspace.
+    Experiments and registered models are workspace-scoped in MLflow. Each owned
+    resource is only visible from inside its workspace's context, so when
+    workspaces are enabled we iterate over every workspace and try each
+    resource from within it, skipping the ones not found in that workspace.
+
+    For experiments we sum the whole ``artifact_location`` tree in one pass —
+    every run's artifacts and every logged model live under that root, so
+    iterating runs and logged models separately would just rediscover the same
+    files. Registered model versions still need their own pass because a
+    version's ``source`` may point outside any owned experiment's tree (e.g.
+    registry-managed copies or external sources); when it points inside, the
+    bytes are double-counted, which we accept for simplicity.
     """
     import mlflow
     from mlflow.exceptions import MlflowException
@@ -194,41 +202,60 @@ def _calculate_used_bytes(username: str) -> int:
     client = mlflow.tracking.MlflowClient()
     total = 0
 
-    user_perms = store.list_experiment_permissions(username)
-    owned_experiment_ids = [p.experiment_id for p in user_perms if p.permission == MANAGE.name]
+    exp_perms = store.list_experiment_permissions(username)
+    owned_experiment_ids = [p.experiment_id for p in exp_perms if p.permission == MANAGE.name]
 
-    if not owned_experiment_ids:
+    model_perms = store.list_registered_model_permissions(username)
+    owned_model_names = [p.name for p in model_perms if p.permission == MANAGE.name]
+
+    if not owned_experiment_ids and not owned_model_names:
         return 0
 
-    remaining = set(owned_experiment_ids)
+    remaining_experiments = set(owned_experiment_ids)
+    remaining_models = set(owned_model_names)
     for workspace_name in _iter_workspace_names():
-        if not remaining:
+        if not remaining_experiments and not remaining_models:
             break
         with _workspace_context(workspace_name):
-            for exp_id in list(remaining):
+            for exp_id in list(remaining_experiments):
                 try:
-                    runs = client.search_runs(experiment_ids=[exp_id])
+                    experiment = client.get_experiment(exp_id)
                 except MlflowException:
                     # Experiment doesn't belong to this workspace — try the next one.
                     continue
-                remaining.discard(exp_id)
-                for run in runs:
-                    total += _sum_artifacts(run.info.artifact_uri, "")
-                # Logged models can be attached directly to an experiment without
-                # belonging to any run, so their artifacts must be counted too.
-                try:
-                    logged_models = client.search_logged_models(experiment_ids=[exp_id])
-                except MlflowException as e:
-                    logger.warning(f"Could not list logged models for experiment {exp_id}: {e}")
-                    continue
-                for model in logged_models:
-                    if model.artifact_location:
-                        total += _sum_artifacts(model.artifact_location, "")
+                remaining_experiments.discard(exp_id)
+                if experiment.artifact_location:
+                    try:
+                        total += _sum_artifacts(experiment.artifact_location, "")
+                    except Exception as e:
+                        logger.warning(f"Could not sum artifacts for experiment {exp_id}: {e}")
 
-    if remaining:
+            for model_name in list(remaining_models):
+                escaped = model_name.replace("'", "\\'")
+                try:
+                    versions = client.search_model_versions(filter_string=f"name = '{escaped}'")
+                except MlflowException:
+                    # Registered model doesn't belong to this workspace — try the next one.
+                    continue
+                remaining_models.discard(model_name)
+                for mv in versions:
+                    if mv.source:
+                        try:
+                            total += _sum_artifacts(mv.source, "")
+                        except Exception as e:
+                            logger.warning(
+                                f"Could not sum artifacts for model {model_name} version {mv.version}: {e}"
+                            )
+
+    if remaining_experiments:
         logger.warning(
-            f"Could not locate experiments {sorted(remaining)} for user {username} in any workspace; "
+            f"Could not locate experiments {sorted(remaining_experiments)} for user {username} in any workspace; "
             "they may have been hard-deleted outside the auth plugin."
+        )
+    if remaining_models:
+        logger.warning(
+            f"Could not locate registered models {sorted(remaining_models)} for user {username} in any workspace; "
+            "they may have been deleted outside the auth plugin."
         )
 
     return total
