@@ -174,7 +174,7 @@ async def trigger_reconcile(is_admin: bool = Depends(get_is_admin)) -> JSONRespo
     from mlflow_oidc_auth.utils.quota import reconcile_all_quotas
 
     errors = reconcile_all_quotas()
-    if errors is not None:
+    if errors:
       return JSONResponse(status_code=500, content={
         "errors": errors
       })
