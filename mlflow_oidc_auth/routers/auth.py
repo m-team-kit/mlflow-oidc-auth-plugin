@@ -435,6 +435,10 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
+                # handle groups being a single string
+                if isinstance(user_groups, str):
+                    user_groups = [user_groups]
+
             logger.debug(f"User groups: {user_groups}")
 
             # Check authorization
