@@ -8,9 +8,15 @@ import PageStatus from "../../../shared/components/page/page-status";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
+interface WorkspaceMember {
+  name: string;
+  displayName?: string;
+  permission: PermissionLevel;
+}
+
 interface WorkspaceMembersSectionProps {
   title: string;
-  members: Array<{ name: string; permission: PermissionLevel }>;
+  members: WorkspaceMember[];
   isLoading: boolean;
   error: Error | null;
   onUpdate: (name: string, permission: PermissionLevel) => Promise<void>;
@@ -32,11 +38,12 @@ export default function WorkspaceMembersSection({
   canManage,
 }: WorkspaceMembersSectionProps) {
   const { showToast } = useToast();
-  const [editingMember, setEditingMember] = useState<{ name: string; permission: PermissionLevel } | null>(null);
+  const [editingMember, setEditingMember] = useState<WorkspaceMember | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editPermission, setEditPermission] = useState<PermissionLevel>("READ");
+  const showDisplayName = members.some((m) => m.displayName);
 
-  const handleEditClick = (member: { name: string; permission: PermissionLevel }) => {
+  const handleEditClick = (member: WorkspaceMember) => {
     setEditingMember(member);
     setEditPermission(member.permission);
   };
@@ -79,6 +86,9 @@ export default function WorkspaceMembersSection({
               <thead>
                 <tr className="border-b border-ui-border dark:border-ui-border-dark">
                   <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">{nameLabel}</th>
+                  {showDisplayName && (
+                    <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">Display Name</th>
+                  )}
                   <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">Permission</th>
                   {canManage && (
                     <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark w-24">Actions</th>
@@ -89,6 +99,9 @@ export default function WorkspaceMembersSection({
                 {members.map((member) => (
                   <tr key={member.name} className="border-b border-ui-border dark:border-ui-border-dark">
                     <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.name}</td>
+                    {showDisplayName && (
+                      <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.displayName ?? ""}</td>
+                    )}
                     <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.permission}</td>
                     {canManage && (
                       <td className="py-2 px-3">

@@ -16,11 +16,19 @@ from mlflow_oidc_auth.entities._base import RegexPermissionBase
 class WorkspacePermission:
     """User-level workspace permission entity."""
 
-    def __init__(self, workspace: str, user_id: int, permission: str, username: str | None = None):
+    def __init__(
+        self,
+        workspace: str,
+        user_id: int,
+        permission: str,
+        username: str | None = None,
+        display_name: str | None = None,
+    ):
         self._workspace = workspace
         self._user_id = user_id
         self._permission = permission
         self._username = username
+        self._display_name = display_name
 
     @property
     def workspace(self) -> str:
@@ -38,12 +46,17 @@ class WorkspacePermission:
     def username(self) -> str | None:
         return self._username
 
+    @property
+    def display_name(self) -> str | None:
+        return self._display_name
+
     def to_json(self) -> dict:
         return {
             "workspace": self._workspace,
             "user_id": self._user_id,
             "permission": self._permission,
             "username": self._username,
+            "display_name": self._display_name,
         }
 
 

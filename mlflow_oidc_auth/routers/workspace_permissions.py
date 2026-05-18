@@ -62,6 +62,7 @@ async def list_workspace_users(
         WorkspaceUserPermissionResponse(
             workspace=p.workspace,
             username=p.username or str(p.user_id),
+            display_name=p.display_name,
             permission=p.permission,
         )
         for p in perms

@@ -167,6 +167,7 @@ export type WorkspaceListResponse = {
 export type WorkspaceUserPermission = {
   workspace: string;
   username: string;
+  display_name?: string | null;
   permission: PermissionLevel;
 };
 

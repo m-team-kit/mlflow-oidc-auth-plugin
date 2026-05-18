@@ -153,6 +153,7 @@ export default function WorkspaceDetailPage() {
 
   const userMembers = workspaceUsers.map((wu) => ({
     name: wu.username,
+    displayName: wu.display_name ?? undefined,
     permission: wu.permission,
   }));
 

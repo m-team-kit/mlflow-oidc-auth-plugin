@@ -29,6 +29,7 @@ class SqlWorkspacePermission(Base):
             user_id=self.user_id,
             permission=self.permission,
             username=self.user.username if self.user else None,
+            display_name=self.user.display_name if self.user else None,
         )
 
 

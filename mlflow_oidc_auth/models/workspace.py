@@ -35,6 +35,7 @@ class WorkspaceUserPermissionResponse(BaseModel):
 
     workspace: str = Field(..., description="Workspace name")
     username: str = Field(..., description="Username")
+    display_name: str | None = Field(None, description="User display name")
     permission: str = Field(..., description="Permission level")
 
 
