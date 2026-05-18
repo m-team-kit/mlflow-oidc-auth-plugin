@@ -459,8 +459,6 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                   and user_module.has_user(legacy_username) and not user_module.has_user(username):
                   try:
                     user_module.rename_user(legacy_username, username)
-                    if display_name:
-                      user_module.update_user_displayname(username, display_name)
                     logger.info(f"Migrated legacy user '{legacy_username}' to '{username}'")
                   except Exception as rename_err:
                     logger.warning(f"Failed to migrate legacy user '{legacy_username}' to '{username}': {rename_err}")
@@ -469,6 +467,8 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
             user_module.populate_groups(group_names=user_groups)
             user_module.update_user(username=username, group_names=user_groups)
+            if display_name:
+              user_module.update_user_displayname(username, display_name)
 
             # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
             # Layered approach: plugin first, JWT claim fallback, then auto-assign
