@@ -1,5 +1,6 @@
 import smtplib
 from email.mime.text import MIMEText
+from typing import Optional
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -42,16 +43,17 @@ def send_quota_email(to_address: str, subject: str, body: str) -> bool:
         return False
 
 
-def send_soft_cap_warning(username: str, used_bytes: int, quota_bytes: int, pct: float, email_address: str = None) -> bool:
+def send_soft_cap_warning(username: str, display_name: Optional[str], used_bytes: int, quota_bytes: int, pct: float, email_address: str = None) -> bool:
+    subject = f"{display_name} ({username})" if display_name else username
     if not email_address:
-        logger.warning(f"Skipping soft-cap warning for {username}: no email address on record")
+        logger.warning(f"Skipping soft-cap warning for {subject}: no email address on record")
         return False
     used_mb = used_bytes / (1024 * 1024)
     quota_mb = quota_bytes / (1024 * 1024)
     subject = f"MLflow storage quota warning: {pct:.0%} used"
     domain = f"  Domain: {config.DOMAIN}\n" if config.DOMAIN else ""
     body = (
-        f"Dear {username},\n\n"
+        f"Dear {subject},\n\n"
         f"You are approaching your MLflow artifact storage quota.\n\n"
         f"  Used:  {used_mb:.1f} MB\n"
         f"  Quota: {quota_mb:.1f} MB\n"
@@ -64,16 +66,17 @@ def send_soft_cap_warning(username: str, used_bytes: int, quota_bytes: int, pct:
     return send_quota_email(email_address, subject, body)
 
 
-def send_hard_cap_notification(username: str, used_bytes: int, quota_bytes: int, email_address: str = None) -> bool:
+def send_hard_cap_notification(username: str, display_name: Optional[str], used_bytes: int, quota_bytes: int, email_address: str = None) -> bool:
+    subject = f"{display_name} ({username})" if display_name else username
     if not email_address:
-        logger.debug(f"Skipping hard-cap notification for {username}: no email address on record")
+        logger.debug(f"Skipping hard-cap notification for {subject}: no email address on record")
         return False
     used_mb = used_bytes / (1024 * 1024)
     quota_mb = quota_bytes / (1024 * 1024)
     subject = "MLflow storage quota exceeded — uploads blocked"
     domain = f"  Domain: {config.DOMAIN}\n" if config.DOMAIN else ""
     body = (
-        f"Dear {username},\n\n"
+        f"Dear {subject},\n\n"
         f"Your MLflow artifact storage quota has been reached.\n\n"
         f"  Used:  {used_mb:.1f} MB\n"
         f"  Quota: {quota_mb:.1f} MB\n\n"

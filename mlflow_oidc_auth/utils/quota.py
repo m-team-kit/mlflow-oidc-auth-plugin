@@ -161,7 +161,11 @@ def reconcile_user_quota(username: str) -> None:
             store.set_quota_hard_blocked(username, True)
         should_notify = quota.soft_notified_at is None or (now - quota.soft_notified_at) > timedelta(hours=24)
         if should_notify:
-            sent = send_hard_cap_notification(username, used, effective_quota, email_address)
+            try:
+                display_name = store.get_user(username).display_name
+            except MlflowException:
+                display_name = None
+            sent = send_hard_cap_notification(username, display_name, used, effective_quota, email_address)
             if sent:
                 store.set_quota_soft_notified_at(username, now)
     else:
@@ -170,7 +174,11 @@ def reconcile_user_quota(username: str) -> None:
         if pct >= soft_fraction:
             # Soft cap: warn once per threshold crossing
             if quota.soft_notified_at is None:
-                sent = send_soft_cap_warning(username, used, effective_quota, pct, email_address)
+                try:
+                    display_name = store.get_user(username).display_name
+                except MlflowException:
+                    display_name = None
+                sent = send_soft_cap_warning(username, display_name, used, effective_quota, pct, email_address)
                 if sent:
                     store.set_quota_soft_notified_at(username, now)
         else:
