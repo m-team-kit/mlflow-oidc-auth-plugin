@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Iterator, Optional, List
 if TYPE_CHECKING:
     from mlflow_oidc_auth.db.models.quota import SqlUserQuota
 
+from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_LIMIT_EXCEEDED
 
@@ -232,6 +233,12 @@ def _calculate_used_bytes(username: str) -> int:
                     # Experiment doesn't belong to this workspace — try the next one.
                     continue
                 remaining_experiments.discard(exp_id)
+                # Skip soft-deleted experiments: their artifacts still occupy
+                # physical storage but should not count against the user's
+                # quota: only admins can restore or hard-delete experiments,
+                # so trash management is an admin responsibility.
+                if experiment.lifecycle_stage == LifecycleStage.DELETED:
+                    continue
                 if experiment.artifact_location:
                     try:
                         total += _sum_artifacts(experiment.artifact_location, "")
