@@ -51,6 +51,7 @@ async def serve_spa_config(
 
             "privacyPolicyUrl": config.PRIVACY_POLICY_URL,
             "termsOfServiceUrl": config.TERMS_OF_SERVICE_URL,
+            "legalsUrl": config.LEGALS_URL,
         }
     )
 

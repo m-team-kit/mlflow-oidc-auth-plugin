@@ -8,6 +8,7 @@ export type RuntimeConfig = {
 
   privacyPolicyUrl?: string;
   termsOfServiceUrl?: string;
+  legalsUrl?: string;
 };
 
 let cachedConfig: RuntimeConfig | null = null;
