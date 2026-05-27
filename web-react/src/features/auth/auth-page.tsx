@@ -24,7 +24,7 @@ export const AuthPage = () => {
       <div className="absolute top-4 right-4">
         <DarkModeToggle />
       </div>
-      <div className="flex-1 flex  items-center justify-center w-full">
+      <div className="flex-1 flex flex-col gap-4 items-center justify-center w-full">
         <div
           className="w-full max-w-2xs p-8 rounded-md shadow flex flex-col items-center
            bg-ui-bg text-ui-text
@@ -66,41 +66,44 @@ export const AuthPage = () => {
             </Button>
           </a>
         </div>
+
+        <div className="flex flex-col md:flex-row gap-2 text-ui-text/60 dark:text-ui-text-dark/40">
+          {config.termsOfServiceUrl != null && (
+            <a
+              href={config.termsOfServiceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+            >
+              Terms of service
+            </a>
+          )}
+          {config.privacyPolicyUrl != null && (
+            <a
+              href={config.privacyPolicyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+            >
+              Privacy Policy
+            </a>
+          )}
+          {config.legalsUrl != null && (
+            <a
+              href={config.legalsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+            >
+              Legals
+            </a>
+          )}
+        </div>
       </div>
 
-      <footer className="w-full py-6 flex flex-col ml-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
+      <footer className="w-full py-6 flex flex-col ps-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
         <div className="flex gap-4">
           <span>powered by &copy; {currentYear} mlflow-oidc-auth</span>
-            {config.termsOfServiceUrl != null && (
-              <a
-                href={config.termsOfServiceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
-              >
-                Terms of service
-              </a>
-            )}
-            {config.privacyPolicyUrl != null && (
-              <a
-                href={config.privacyPolicyUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
-              >
-                Privacy Policy
-              </a>
-            )}
-            {config.legalsUrl != null && (
-              <a
-                href={config.legalsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
-              >
-                Legals
-              </a>
-            )}
         </div>
       </footer>
     </div>
