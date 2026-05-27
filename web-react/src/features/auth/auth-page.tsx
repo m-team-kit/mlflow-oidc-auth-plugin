@@ -68,7 +68,7 @@ export const AuthPage = () => {
         </div>
 
         <div className="flex flex-col md:flex-row gap-2 text-ui-text/60 dark:text-ui-text-dark/40">
-          {config.termsOfServiceUrl != null && (
+          {config.termsOfServiceUrl && (
             <a
               href={config.termsOfServiceUrl}
               target="_blank"
@@ -78,7 +78,7 @@ export const AuthPage = () => {
               Terms of service
             </a>
           )}
-          {config.privacyPolicyUrl != null && (
+          {config.privacyPolicyUrl && (
             <a
               href={config.privacyPolicyUrl}
               target="_blank"
@@ -88,7 +88,7 @@ export const AuthPage = () => {
               Privacy Policy
             </a>
           )}
-          {config.legalsUrl != null && (
+          {config.legalsUrl && (
             <a
               href={config.legalsUrl}
               target="_blank"
