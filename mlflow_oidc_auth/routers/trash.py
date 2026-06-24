@@ -330,23 +330,8 @@ async def permanently_delete_all_trashed_entities(
                 experiment_list = fetch_experiments()
                 target_experiment_ids = [exp.experiment_id for exp in experiment_list]
 
-            # Get runs from target experiments
-            if target_experiment_ids:
-
-                def fetch_runs(token=None):
-                    try:
-                        page = backend_store.search_runs(
-                            experiment_ids=target_experiment_ids,
-                            filter_string="",
-                            run_view_type=ViewType.DELETED_ONLY,
-                            page_token=token,
-                        )
-                        return (page + fetch_runs(page.token)) if page.token else page
-                    except Exception:
-                        return []
-
-                runs_from_experiments = fetch_runs()
-                target_run_ids.extend([run.info.run_id for run in runs_from_experiments])
+            # Runs inside target experiments are handled by hard_delete_experiment_with_runs
+            # below — do not add them to target_run_ids to avoid double deletion.
 
         # Delete runs
         deleted_runs = []
