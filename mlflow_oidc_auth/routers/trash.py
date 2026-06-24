@@ -393,7 +393,9 @@ async def permanently_delete_all_trashed_entities(
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
                 try:
-                    backend_store._hard_delete_experiment(experiment_id)
+                    from mlflow_oidc_auth.utils.trash_cleanup import hard_delete_experiment_with_runs
+
+                    hard_delete_experiment_with_runs(experiment_id, backend_store)
                     deleted_experiments.append(experiment_id)
                     logger.info(f"Permanently deleted experiment {experiment_id}")
                 except Exception as e:
