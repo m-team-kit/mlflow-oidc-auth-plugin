@@ -399,6 +399,15 @@ class SqlAlchemyStore:
     def delete_experiment_permission(self, experiment_id: str, username: str):
         return self.experiment_repo.revoke_permission(experiment_id, username)
 
+    def wipe_experiment_permissions(self, experiment_id: str) -> None:
+        """Delete all user and group permissions for an experiment.
+
+        Used to clean up orphaned permission rows when an experiment has been
+        hard-deleted outside the auth plugin (e.g. via mlflow gc).
+        """
+        self.experiment_repo.wipe(experiment_id)
+        self.experiment_group_repo.wipe(experiment_id)
+
     def create_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.registered_model_repo.create(name, username, permission)
 

@@ -309,8 +309,14 @@ def _calculate_used_bytes(username: str) -> tuple:
     if remaining_experiments:
         logger.warning(
             f"Could not locate experiments {sorted(remaining_experiments)} for user {username} in any workspace; "
-            "they may have been hard-deleted outside the auth plugin."
+            "assuming hard-deleted externally and wiping orphaned permission rows."
         )
+        for exp_id in remaining_experiments:
+            try:
+                store.wipe_experiment_permissions(exp_id)
+                _get_experiment_size_cache().delete(exp_id)
+            except Exception as e:
+                logger.warning(f"Could not wipe orphaned permissions for experiment {exp_id}: {e}")
     if remaining_models:
         logger.warning(
             f"Could not locate registered models {sorted(remaining_models)} for user {username} in any workspace; "
