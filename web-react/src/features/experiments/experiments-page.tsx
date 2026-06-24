@@ -8,6 +8,13 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
 export default function ExperimentsPage() {
   const {
     searchTerm,
@@ -39,6 +46,14 @@ export default function ExperimentsPage() {
     {
       header: "Experiment Name",
       render: (item) => item.name,
+    },
+    {
+      header: "Size",
+      render: (item) =>
+        item.size_bytes !== null && item.size_bytes !== undefined
+          ? formatBytes(item.size_bytes)
+          : "—",
+      className: "flex-shrink-0 text-right tabular-nums",
     },
     {
       header: "Permissions",

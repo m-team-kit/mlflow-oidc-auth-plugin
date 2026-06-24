@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Iterator, Optional, List
 
 if TYPE_CHECKING:
+    from mlflow_oidc_auth.cache.backend import CacheBackend
     from mlflow_oidc_auth.db.models.quota import SqlUserQuota
 
 from mlflow.entities.lifecycle_stage import LifecycleStage
@@ -14,6 +15,29 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
+
+_experiment_size_cache: Optional["CacheBackend"] = None
+_EXPERIMENT_SIZES_KEY = "all_sizes"
+
+
+def _get_experiment_size_cache() -> "CacheBackend":
+    global _experiment_size_cache
+    if _experiment_size_cache is None:
+        from mlflow_oidc_auth.cache import get_cache_backend
+
+        ttl = max(config.QUOTA_RECONCILE_INTERVAL_S * 2, 3600)
+        _experiment_size_cache = get_cache_backend("experiment_sizes", maxsize=1, ttl=ttl)
+    return _experiment_size_cache
+
+
+def get_all_experiment_sizes() -> dict:
+    """Return the cached experiment-id → artifact-bytes mapping.
+
+    Populated by reconcile_all_quotas(); returns an empty dict until the first
+    reconciliation completes.
+    """
+    result = _get_experiment_size_cache().get(_EXPERIMENT_SIZES_KEY)
+    return result if result is not None else {}
 
 
 @contextmanager
@@ -120,18 +144,22 @@ def enforce_quota(username: str) -> None:
         )
 
 
-def reconcile_user_quota(username: str) -> None:
+def reconcile_user_quota(username: str) -> dict:
     """Recalculate used_bytes for a single user and apply threshold logic.
 
     If the user has no quota row yet, one is created so that used_bytes is
     always tracked regardless of whether an explicit limit has been set.
+
+    Returns:
+        A dict mapping each owned experiment_id to its artifact byte count.
+        Empty when the user has no quota limit and byte counting was skipped.
     """
     quota = store.get_user_quota(username)
     if quota is None:
-        used = _calculate_used_bytes(username)
+        used, experiment_sizes = _calculate_used_bytes(username)
         store.set_user_quota(username, None, None)
         store.update_user_quota_used_bytes(username, used)
-        return
+        return experiment_sizes
 
     effective_quota = effective_quota_bytes(quota)
     if effective_quota is None:
@@ -140,9 +168,9 @@ def reconcile_user_quota(username: str) -> None:
             store.set_quota_hard_blocked(username, False)
         if quota.soft_notified_at is not None:
             store.set_quota_soft_notified_at(username, None)
-        return
+        return {}
 
-    used = _calculate_used_bytes(username)
+    used, experiment_sizes = _calculate_used_bytes(username)
     store.update_user_quota_used_bytes(username, used)
 
     # Threshold checks
@@ -187,8 +215,10 @@ def reconcile_user_quota(username: str) -> None:
             if quota.soft_notified_at is not None:
                 store.set_quota_soft_notified_at(username, None)
 
+    return experiment_sizes
 
-def _calculate_used_bytes(username: str) -> int:
+
+def _calculate_used_bytes(username: str) -> tuple:
     """Sum artifact sizes across all experiments and registered models owned by the user.
 
     Experiments and registered models are workspace-scoped in MLflow. Each owned
@@ -203,6 +233,10 @@ def _calculate_used_bytes(username: str) -> int:
     version's ``source`` may point outside any owned experiment's tree (e.g.
     registry-managed copies or external sources); when it points inside, the
     bytes are double-counted, which we accept for simplicity.
+
+    Returns:
+        A ``(total_bytes, experiment_sizes)`` tuple where ``experiment_sizes``
+        maps each owned experiment_id to its artifact byte count.
     """
     import mlflow
     from mlflow.exceptions import MlflowException
@@ -210,6 +244,7 @@ def _calculate_used_bytes(username: str) -> int:
 
     client = mlflow.tracking.MlflowClient()
     total = 0
+    experiment_sizes: dict = {}
 
     exp_perms = store.list_experiment_permissions(username)
     owned_experiment_ids = [p.experiment_id for p in exp_perms if p.permission == MANAGE.name]
@@ -218,7 +253,7 @@ def _calculate_used_bytes(username: str) -> int:
     owned_model_names = [p.name for p in model_perms if p.permission == MANAGE.name]
 
     if not owned_experiment_ids and not owned_model_names:
-        return 0
+        return 0, experiment_sizes
 
     remaining_experiments = set(owned_experiment_ids)
     remaining_models = set(owned_model_names)
@@ -238,12 +273,16 @@ def _calculate_used_bytes(username: str) -> int:
                 # quota: only admins can restore or hard-delete experiments,
                 # so trash management is an admin responsibility.
                 if experiment.lifecycle_stage == LifecycleStage.DELETED:
+                    experiment_sizes[exp_id] = 0
                     continue
+                exp_bytes = 0
                 if experiment.artifact_location:
                     try:
-                        total += _sum_artifacts(experiment.artifact_location, "")
+                        exp_bytes = _sum_artifacts(experiment.artifact_location, "")
                     except Exception as e:
                         logger.warning(f"Could not sum artifacts for experiment {exp_id}: {e}")
+                experiment_sizes[exp_id] = exp_bytes
+                total += exp_bytes
 
             for model_name in list(remaining_models):
                 escaped = model_name.replace("'", "\\'")
@@ -273,7 +312,7 @@ def _calculate_used_bytes(username: str) -> int:
             "they may have been deleted outside the auth plugin."
         )
 
-    return total
+    return total, experiment_sizes
 
 
 def _sum_artifacts(artifact_uri: str, path: str) -> int:
@@ -298,22 +337,33 @@ def _sum_artifacts(artifact_uri: str, path: str) -> int:
 
 
 def reconcile_all_quotas() -> Optional[List[str]]:
-    """Reconcile quotas for all users, creating quota rows where missing."""
+    """Reconcile quotas for all users, creating quota rows where missing.
+
+    After reconciling all users, writes a combined experiment_id → bytes mapping
+    to the experiment size cache so the UI can display per-experiment sizes.
+    """
     try:
-      users = store.list_users(all=True)
+        users = store.list_users(all=True)
     except Exception as e:
-      error = f"Failed getting users for quota reconciliation: {e}"
-      logger.error(error)
-      return [error]
+        error = f"Failed getting users for quota reconciliation: {e}"
+        logger.error(error)
+        return [error]
 
     errors = []
+    all_experiment_sizes: dict = {}
     for user in users:
         try:
-          reconcile_user_quota(user.username)
+            exp_sizes = reconcile_user_quota(user.username)
+            all_experiment_sizes.update(exp_sizes)
         except Exception as e:
-          error = f"Error reconciling quota for {user.username}: {e}"
-          logger.error(error)
-          errors.append(error)
+            error = f"Error reconciling quota for {user.username}: {e}"
+            logger.error(error)
+            errors.append(error)
+
+    try:
+        _get_experiment_size_cache().set(_EXPERIMENT_SIZES_KEY, all_experiment_sizes)
+    except Exception as e:
+        logger.warning(f"Could not write experiment sizes to cache: {e}")
 
     return errors
 

@@ -2,6 +2,7 @@ export type ExperimentListItem = {
   id: string;
   name: string;
   tags: Record<string, string>;
+  size_bytes?: number | null;
 };
 
 export type ModelListItem = {

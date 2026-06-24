@@ -118,7 +118,7 @@ class TestReconcileUserQuota:
         """reconcile_user_quota should create a quota row and populate used_bytes when none exists."""
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=1_000_000),
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(1_000_000, {})),
         ):
             mock_store.get_user_quota.return_value = None
 
@@ -135,7 +135,7 @@ class TestReconcileUserQuota:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=5_000_000) as mock_calc,
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(5_000_000, {})) as mock_calc,
             patch("mlflow_oidc_auth.utils.email.send_soft_cap_warning") as mock_email,
         ):
             mock_store.get_user_quota.return_value = quota
@@ -156,7 +156,7 @@ class TestReconcileUserQuota:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=9_500_000),
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(9_500_000, {})),
             patch("mlflow_oidc_auth.utils.email.send_soft_cap_warning") as mock_email,
         ):
             mock_store.get_user_quota.return_value = quota
@@ -220,7 +220,7 @@ class TestReconcileUserQuotaThresholds:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=1500),
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(1500, {})),
             patch("mlflow_oidc_auth.utils.email.send_hard_cap_notification", return_value=True) as mock_hard_email,
             patch("mlflow_oidc_auth.utils.email.send_soft_cap_warning") as mock_soft_email,
         ):
@@ -247,7 +247,7 @@ class TestReconcileUserQuotaThresholds:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=1500),
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(1500, {})),
             patch("mlflow_oidc_auth.utils.email.send_hard_cap_notification") as mock_hard_email,
         ):
             mock_store.get_user_quota.return_value = quota
@@ -269,7 +269,7 @@ class TestReconcileUserQuotaThresholds:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=1500),
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(1500, {})),
             patch("mlflow_oidc_auth.utils.email.send_hard_cap_notification", return_value=True) as mock_hard_email,
         ):
             mock_store.get_user_quota.return_value = quota
@@ -295,7 +295,7 @@ class TestReconcileUserQuotaThresholds:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=500),  # 50%, well below
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(500, {})),  # 50%, well below
             patch("mlflow_oidc_auth.utils.email.send_soft_cap_warning") as mock_soft_email,
         ):
             mock_store.get_user_quota.return_value = quota
@@ -315,7 +315,7 @@ class TestReconcileUserQuotaThresholds:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
-            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=400),  # below soft cap too
+            patch("mlflow_oidc_auth.utils.quota._calculate_used_bytes", return_value=(400, {})),  # below soft cap too
         ):
             mock_store.get_user_quota.return_value = quota
             mock_config.QUOTA_DEFAULT_BYTES = None
@@ -382,11 +382,16 @@ class TestCalculateUsedBytesWorkspaceIteration:
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            assert _calculate_used_bytes("alice") == 0
+            total, _ = _calculate_used_bytes("alice")
+            assert total == 0
             mock_client_cls.return_value.search_runs.assert_not_called()
 
     def test_workspaces_disabled_single_pass(self):
         """With workspaces off, a single (None) iteration sums all experiments."""
+        exp = MagicMock()
+        exp.lifecycle_stage = "active"
+        exp.artifact_location = "s3://bucket/exp"
+
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
@@ -394,14 +399,16 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=42),
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1"), _make_perm("e2")]
+            mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = False
-            mock_client_cls.return_value.search_runs.return_value = [_make_run(), _make_run()]
+            mock_client_cls.return_value.get_experiment.return_value = exp
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            # 2 experiments × 2 runs × 42 bytes
-            assert _calculate_used_bytes("alice") == 4 * 42
-            assert mock_client_cls.return_value.search_runs.call_count == 2
+            # 2 experiments × _sum_artifacts returning 42 each
+            total, sizes = _calculate_used_bytes("alice")
+            assert total == 2 * 42
+            assert sizes == {"e1": 42, "e2": 42}
 
     def test_skips_experiment_in_wrong_workspace_and_finds_it_in_correct_one(self):
         """An experiment that lives in workspace B is skipped in A and counted in B."""
@@ -410,11 +417,15 @@ class TestCalculateUsedBytesWorkspaceIteration:
         ws_b = MagicMock(name="ws_b")
         ws_b.name = "ws-b"
 
+        exp_b = MagicMock()
+        exp_b.lifecycle_stage = "active"
+        exp_b.artifact_location = "s3://b"
+
         client = MagicMock()
-        # In ws-a: raise (experiment doesn't exist there). In ws-b: return one run.
-        client.search_runs.side_effect = [
+        # In ws-a: raise (experiment doesn't exist there). In ws-b: return experiment.
+        client.get_experiment.side_effect = [
             MlflowException("not found"),
-            [_make_run("s3://b")],
+            exp_b,
         ]
 
         with (
@@ -427,17 +438,20 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=100),
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
+            mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a, ws_b]
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            assert _calculate_used_bytes("alice") == 100
+            total, sizes = _calculate_used_bytes("alice")
+            assert total == 100
+            assert sizes == {"e1": 100}
 
         # Both workspaces were entered; experiment was tried twice
         assert mock_set_ws.call_args_list == [(("ws-a",),), (("ws-b",),)]
         assert mock_clear_ws.call_count == 2
-        assert client.search_runs.call_count == 2
+        assert client.get_experiment.call_count == 2
 
     def test_short_circuits_once_all_experiments_located(self):
         """Once every owned experiment is found, remaining workspaces are skipped."""
@@ -446,8 +460,12 @@ class TestCalculateUsedBytesWorkspaceIteration:
         ws_b = MagicMock()
         ws_b.name = "ws-b"
 
+        exp_a = MagicMock()
+        exp_a.lifecycle_stage = "active"
+        exp_a.artifact_location = "s3://a"
+
         client = MagicMock()
-        client.search_runs.return_value = [_make_run()]
+        client.get_experiment.return_value = exp_a
 
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
@@ -459,12 +477,15 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=10),
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
+            mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a, ws_b]
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            assert _calculate_used_bytes("alice") == 10
+            total, sizes = _calculate_used_bytes("alice")
+            assert total == 10
+            assert sizes == {"e1": 10}
 
         # Found in ws-a → never enters ws-b
         assert mock_set_ws.call_args_list == [(("ws-a",),)]
@@ -474,7 +495,7 @@ class TestCalculateUsedBytesWorkspaceIteration:
         ws_a = MagicMock()
         ws_a.name = "ws-a"
         client = MagicMock()
-        client.search_runs.side_effect = MlflowException("nope")
+        client.get_experiment.side_effect = MlflowException("nope")
 
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
@@ -485,20 +506,26 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow.utils.workspace_context.clear_server_request_workspace"),
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e-orphan")]
+            mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a]
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            assert _calculate_used_bytes("alice") == 0
+            total, _ = _calculate_used_bytes("alice")
+            assert total == 0
 
         assert "e-orphan" in caplog.text
         assert "any workspace" in caplog.text
 
     def test_workspace_enumeration_failure_falls_back_to_single_pass(self, caplog):
         """If listing workspaces fails, fall back to one None-context sweep instead of giving up."""
+        exp = MagicMock()
+        exp.lifecycle_stage = "active"
+        exp.artifact_location = "s3://fallback"
+
         client = MagicMock()
-        client.search_runs.return_value = [_make_run()]
+        client.get_experiment.return_value = exp
 
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
@@ -510,11 +537,14 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=7),
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
+            mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
-            assert _calculate_used_bytes("alice") == 7
+            total, sizes = _calculate_used_bytes("alice")
+            assert total == 7
+            assert sizes == {"e1": 7}
 
         # Fallback enters context with None
         mock_set_ws.assert_called_once_with(None)
@@ -546,10 +576,12 @@ class TestReconcileAllQuotas:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota") as mock_reconcile,
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_users.return_value = [u1, u2, u3]
-            # bob blows up; alice + carol succeed
-            mock_reconcile.side_effect = [None, RuntimeError("bob exploded"), None]
+            mock_cache_fn.return_value = MagicMock()
+            # bob blows up; alice + carol succeed and return experiment size dicts
+            mock_reconcile.side_effect = [{"e1": 100}, RuntimeError("bob exploded"), {"e3": 200}]
 
             from mlflow_oidc_auth.utils.quota import reconcile_all_quotas
 
@@ -565,8 +597,10 @@ class TestReconcileAllQuotas:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota") as mock_reconcile,
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_users.return_value = []
+            mock_cache_fn.return_value = MagicMock()
 
             from mlflow_oidc_auth.utils.quota import reconcile_all_quotas
 

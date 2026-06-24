@@ -74,6 +74,7 @@ class ExperimentSummary(BaseModel):
     name: str = Field(..., description="The name of the experiment")
     id: str = Field(..., description="The unique identifier of the experiment")
     tags: Optional[Dict[str, str]] = Field(None, description="Tags associated with the experiment")
+    size_bytes: Optional[int] = Field(None, description="Cached artifact size in bytes; null until first quota reconciliation")
 
 
 class ExperimentRegexPermission(BaseModel):
