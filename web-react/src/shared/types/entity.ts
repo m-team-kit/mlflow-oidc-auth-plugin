@@ -87,6 +87,7 @@ export type DeletedExperiment = {
   tags: Record<string, string>;
   creation_time: number;
   last_update_time: number;
+  size_bytes?: number | null;
 };
 
 export type DeletedRun = {

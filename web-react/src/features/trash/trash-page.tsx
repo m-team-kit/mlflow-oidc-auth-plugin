@@ -19,6 +19,7 @@ import {
   cleanupTrash,
 } from "../../core/services/trash-service";
 import { RemoveFromTrashModal } from "./remove-from-trash-modal";
+import { formatBytes } from "../../shared/utils/format-utils";
 
 type TrashTab = "experiments" | "runs";
 
@@ -228,6 +229,17 @@ export default function TrashPage() {
         );
       },
     },
+    ...(activeTab === "experiments"
+      ? [
+          {
+            header: "Size",
+            render: (item: TrashItem) => {
+              const exp = item.original as DeletedExperiment;
+              return exp.size_bytes != null ? formatBytes(exp.size_bytes) : "-";
+            },
+          } satisfies ColumnConfig<TrashItem>,
+        ]
+      : []),
     {
       header: "Actions",
       render: (item) => (

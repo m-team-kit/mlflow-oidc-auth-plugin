@@ -16,6 +16,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
+from mlflow_oidc_auth.utils.quota import get_experiment_size
 
 from ._prefix import TRASH_ROUTER_PREFIX
 
@@ -81,6 +82,7 @@ async def list_deleted_experiments(
                 "tags": exp.tags if exp.tags else {},
                 "creation_time": exp.creation_time,
                 "last_update_time": exp.last_update_time,
+                "size_bytes": get_experiment_size(exp.experiment_id),
             }
             experiments_list.append(experiment_data)
 
