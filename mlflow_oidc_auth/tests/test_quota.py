@@ -397,11 +397,13 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
             patch("mlflow.tracking.MlflowClient") as mock_client_cls,
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=42),
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1"), _make_perm("e2")]
             mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = False
             mock_client_cls.return_value.get_experiment.return_value = exp
+            mock_cache_fn.return_value.get.return_value = None  # cache miss → compute
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
@@ -436,11 +438,13 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set_ws,
             patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear_ws,
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=100),
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
             mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a, ws_b]
+            mock_cache_fn.return_value.get.return_value = None  # cache miss → compute
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
@@ -475,11 +479,13 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set_ws,
             patch("mlflow.utils.workspace_context.clear_server_request_workspace"),
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=10),
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
             mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a, ws_b]
+            mock_cache_fn.return_value.get.return_value = None  # cache miss → compute
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
@@ -504,11 +510,13 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow.server.handlers._get_workspace_store") as mock_get_ws_store,
             patch("mlflow.utils.workspace_context.set_server_request_workspace"),
             patch("mlflow.utils.workspace_context.clear_server_request_workspace"),
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e-orphan")]
             mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             mock_get_ws_store.return_value.list_workspaces.return_value = [ws_a]
+            mock_cache_fn.return_value.get.return_value = None  # cache miss → compute
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
@@ -535,10 +543,12 @@ class TestCalculateUsedBytesWorkspaceIteration:
             patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set_ws,
             patch("mlflow.utils.workspace_context.clear_server_request_workspace"),
             patch("mlflow_oidc_auth.utils.quota._sum_artifacts", return_value=7),
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_experiment_permissions.return_value = [_make_perm("e1")]
             mock_store.list_registered_model_permissions.return_value = []
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            mock_cache_fn.return_value.get.return_value = None  # cache miss → compute
 
             from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
 
@@ -549,6 +559,30 @@ class TestCalculateUsedBytesWorkspaceIteration:
         # Fallback enters context with None
         mock_set_ws.assert_called_once_with(None)
         assert "Could not enumerate workspaces" in caplog.text
+
+    def test_uses_cached_size_skips_workspace_lookup(self):
+        """Experiments with a valid cache entry skip workspace iteration entirely."""
+        with (
+            patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
+            patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
+            patch("mlflow.tracking.MlflowClient") as mock_client_cls,
+            patch("mlflow_oidc_auth.utils.quota._sum_artifacts") as mock_sum,
+            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
+        ):
+            mock_store.list_experiment_permissions.return_value = [_make_perm("e1"), _make_perm("e2")]
+            mock_store.list_registered_model_permissions.return_value = []
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+            cached = {"e1": 100, "e2": 200}
+            mock_cache_fn.return_value.get.side_effect = lambda exp_id: cached.get(exp_id)
+
+            from mlflow_oidc_auth.utils.quota import _calculate_used_bytes
+
+            total, sizes = _calculate_used_bytes("alice")
+
+        assert total == 300
+        assert sizes == {"e1": 100, "e2": 200}
+        mock_sum.assert_not_called()
+        mock_client_cls.return_value.get_experiment.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -576,11 +610,9 @@ class TestReconcileAllQuotas:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota") as mock_reconcile,
-            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_users.return_value = [u1, u2, u3]
-            mock_cache_fn.return_value = MagicMock()
-            # bob blows up; alice + carol succeed and return experiment size dicts
+            # bob blows up; alice + carol succeed
             mock_reconcile.side_effect = [{"e1": 100}, RuntimeError("bob exploded"), {"e3": 200}]
 
             from mlflow_oidc_auth.utils.quota import reconcile_all_quotas
@@ -597,10 +629,8 @@ class TestReconcileAllQuotas:
         with (
             patch("mlflow_oidc_auth.utils.quota.store") as mock_store,
             patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota") as mock_reconcile,
-            patch("mlflow_oidc_auth.utils.quota._get_experiment_size_cache") as mock_cache_fn,
         ):
             mock_store.list_users.return_value = []
-            mock_cache_fn.return_value = MagicMock()
 
             from mlflow_oidc_auth.utils.quota import reconcile_all_quotas
 

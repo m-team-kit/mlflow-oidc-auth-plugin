@@ -17,7 +17,6 @@ from mlflow_oidc_auth.store import store
 logger = get_logger()
 
 _experiment_size_cache: Optional["CacheBackend"] = None
-_EXPERIMENT_SIZES_KEY = "all_sizes"
 
 
 def _get_experiment_size_cache() -> "CacheBackend":
@@ -26,18 +25,13 @@ def _get_experiment_size_cache() -> "CacheBackend":
         from mlflow_oidc_auth.cache import get_cache_backend
 
         ttl = max(config.QUOTA_RECONCILE_INTERVAL_S * 2, 3600)
-        _experiment_size_cache = get_cache_backend("experiment_sizes", maxsize=1, ttl=ttl)
+        _experiment_size_cache = get_cache_backend("experiment_sizes", maxsize=10000, ttl=ttl)
     return _experiment_size_cache
 
 
-def get_all_experiment_sizes() -> dict:
-    """Return the cached experiment-id → artifact-bytes mapping.
-
-    Populated by reconcile_all_quotas(); returns an empty dict until the first
-    reconciliation completes.
-    """
-    result = _get_experiment_size_cache().get(_EXPERIMENT_SIZES_KEY)
-    return result if result is not None else {}
+def get_experiment_size(experiment_id: str) -> Optional[int]:
+    """Return the cached artifact size for a single experiment, or None if not yet computed."""
+    return _get_experiment_size_cache().get(experiment_id)
 
 
 @contextmanager
@@ -255,7 +249,17 @@ def _calculate_used_bytes(username: str) -> tuple:
     if not owned_experiment_ids and not owned_model_names:
         return 0, experiment_sizes
 
-    remaining_experiments = set(owned_experiment_ids)
+    # Resolve experiment sizes from cache; only hit the artifact store for misses.
+    cache = _get_experiment_size_cache()
+    remaining_experiments = set()
+    for exp_id in owned_experiment_ids:
+        cached = cache.get(exp_id)
+        if cached is not None:
+            experiment_sizes[exp_id] = cached
+            total += cached
+        else:
+            remaining_experiments.add(exp_id)
+
     remaining_models = set(owned_model_names)
     for workspace_name in _iter_workspace_names():
         if not remaining_experiments and not remaining_models:
@@ -281,6 +285,7 @@ def _calculate_used_bytes(username: str) -> tuple:
                         exp_bytes = _sum_artifacts(experiment.artifact_location, "")
                     except Exception as e:
                         logger.warning(f"Could not sum artifacts for experiment {exp_id}: {e}")
+                cache.set(exp_id, exp_bytes)
                 experiment_sizes[exp_id] = exp_bytes
                 total += exp_bytes
 
@@ -339,8 +344,10 @@ def _sum_artifacts(artifact_uri: str, path: str) -> int:
 def reconcile_all_quotas() -> Optional[List[str]]:
     """Reconcile quotas for all users, creating quota rows where missing.
 
-    After reconciling all users, writes a combined experiment_id → bytes mapping
-    to the experiment size cache so the UI can display per-experiment sizes.
+    Per-experiment artifact sizes are written to the cache inside
+    _calculate_used_bytes as each experiment is processed, so callers such as
+    list_experiments can read individual sizes without waiting for all users to
+    be reconciled.
     """
     try:
         users = store.list_users(all=True)
@@ -350,20 +357,13 @@ def reconcile_all_quotas() -> Optional[List[str]]:
         return [error]
 
     errors = []
-    all_experiment_sizes: dict = {}
     for user in users:
         try:
-            exp_sizes = reconcile_user_quota(user.username)
-            all_experiment_sizes.update(exp_sizes)
+            reconcile_user_quota(user.username)
         except Exception as e:
             error = f"Error reconciling quota for {user.username}: {e}"
             logger.error(error)
             errors.append(error)
-
-    try:
-        _get_experiment_size_cache().set(_EXPERIMENT_SIZES_KEY, all_experiment_sizes)
-    except Exception as e:
-        logger.warning(f"Could not write experiment sizes to cache: {e}")
 
     return errors
 

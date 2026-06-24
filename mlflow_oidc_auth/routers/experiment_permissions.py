@@ -146,17 +146,14 @@ async def list_experiments(username: str = Depends(get_username), is_admin: bool
         # Regular users only see experiments they can manage
         manageable_experiments = filter_manageable_experiments(username, all_experiments)
 
-    # Attach cached artifact sizes (populated by quota reconciliation; None until first run)
-    from mlflow_oidc_auth.utils.quota import get_all_experiment_sizes
-
-    experiment_sizes = get_all_experiment_sizes()
+    from mlflow_oidc_auth.utils.quota import get_experiment_size
 
     return [
         ExperimentSummary(
             name=experiment.name,
             id=experiment.experiment_id,
             tags=experiment.tags,
-            size_bytes=experiment_sizes.get(experiment.experiment_id),
+            size_bytes=get_experiment_size(experiment.experiment_id),
         )
         for experiment in manageable_experiments
     ]
