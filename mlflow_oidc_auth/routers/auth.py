@@ -557,11 +557,11 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             real_email = userinfo.get("email")
             if real_email:
               try:
-                from mlflow_oidc_auth.store import store as _store
-
                 user_module.update_quota_email(username, real_email)
               except Exception as _e:
                 logger.warning(f"Could not update quota email for {username}: {_e}")
+            else:
+              logger.warning(f"No email claim found in OIDC token for {username} — quota notifications will not be sent")
 
             logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
