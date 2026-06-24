@@ -292,7 +292,7 @@ export default function WorkspaceDetailPage() {
           }}
           title={`Grant group permissions for workspace ${workspaceName}`}
           label="Group"
-          options={availableGroups}
+          options={availableGroups.map((g) => ({ label: g, value: g }))}
           type="experiments"
           isLoading={isSaving}
         />

@@ -43,14 +43,14 @@ describe("sidebar-data", () => {
 
   it("returns Workspaces link when workspaces enabled", () => {
     const data = getSidebarData(false, false, true);
-    // 6 base + 1 workspace = 7
-    expect(data).toHaveLength(7);
+    // 4 base + 1 workspace = 5
+    expect(data).toHaveLength(5);
     expect(data.map((item) => item.label)).toContain("Workspaces");
   });
 
   it("returns all links when everything enabled", () => {
     const data = getSidebarData(true, true, true);
-    // 6 base + 3 AI + 1 workspace + 2 admin = 12
+    // 4 base + 3 AI + 1 workspace + 4 admin = 12
     expect(data).toHaveLength(12);
     expect(data.map((item) => item.label)).toContain("AI Endpoints");
     expect(data.map((item) => item.label)).toContain("Workspaces");

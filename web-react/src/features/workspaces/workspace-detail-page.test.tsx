@@ -60,11 +60,24 @@ vi.mock("../../core/hooks/use-workspace-groups", () => ({
 }));
 
 vi.mock("../../core/hooks/use-all-users", () => ({
-  useAllUsers: () => ({ allUsers: ["alice", "bob", "newuser"], isLoading: false }),
+  useAllUsers: () => ({
+    allUsers: [
+      { username: "alice", display_name: "Alice" },
+      { username: "bob", display_name: "Bob" },
+      { username: "newuser", display_name: "New User" },
+    ],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-all-accounts", () => ({
-  useAllServiceAccounts: () => ({ allServiceAccounts: ["svc-build", "svc-deploy"], isLoading: false }),
+  useAllServiceAccounts: () => ({
+    allServiceAccounts: [
+      { username: "svc-build", display_name: "Build" },
+      { username: "svc-deploy", display_name: "Deploy" },
+    ],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-all-groups", () => ({
@@ -165,13 +178,13 @@ vi.mock("../permissions/components/grant-permission-modal", () => ({
     isOpen: boolean;
     title: string;
     onSave: (name: string, permission: string) => Promise<void>;
-    options: string[];
+    options: Array<{ label: string; value: string }>;
     label: string;
   }) =>
     isOpen ? (
       <div data-testid={`grant-modal-${label}`} title={title}>
-        <span data-testid="grant-modal-options">{options.join(",")}</span>
-        <button data-testid={`grant-save-${label}`} onClick={() => void onSave(options[0], "READ")}>
+        <span data-testid="grant-modal-options">{options.map((o) => o.value).join(",")}</span>
+        <button data-testid={`grant-save-${label}`} onClick={() => void onSave(options[0].value, "READ")}>
           Save
         </button>
       </div>

@@ -140,7 +140,7 @@ describe("EntityPermissionsManager", () => {
 
     // user1 is already in permissions, so only user2 is available
     fireEvent.change(screen.getByLabelText(/User/i), { target: { value: "user" } });
-    fireEvent.click(screen.getByText("User Two (user2)"));
+    fireEvent.click(screen.getByText("User Two"));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     fireEvent.click(saveButton);
@@ -161,8 +161,8 @@ describe("EntityPermissionsManager", () => {
       screen.getByText(/Grant service account permissions/i),
     ).toBeDefined();
 
-    fireEvent.change(screen.getByLabelText(/Service account/i), { target: { value: "sa" } });
-    fireEvent.click(screen.getByText("Service Account 1 (sa1)"));
+    fireEvent.change(screen.getByLabelText(/Service account/i), { target: { value: "sa1" } });
+    fireEvent.click(screen.getByText("Service Account 1"));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     fireEvent.click(saveButton);
