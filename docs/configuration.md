@@ -16,6 +16,8 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
 | `OIDC_PROVIDER_DISPLAY_NAME` | String | `Login with OIDC` | Display name shown on the login page button |
 | `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | Attribute name in the ID token that contains the user's group memberships |
+| `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS` | Integer | `30` | Clock-skew leeway applied to the IdP-issued token expiry. Sessions are rejected once `now >= expires_at - leeway`, forcing the user back through the OIDC login flow so IdP-side changes (deactivation, group changes, MFA enrollment) take effect within the token's lifetime instead of waiting for the cookie TTL |
+| `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request `offline_access` and persist the refresh token in the session so expired sessions are silently refreshed against the IdP without forcing a visible login. Disabled by default because many enterprises require additional approval for `offline_access` and because refresh tokens are persisted in the signed (but not encrypted) session cookie |
 
 ### Group and Access Control
 
@@ -52,6 +54,7 @@ The application is configured through environment variables, `.env` files, or pl
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `EXTEND_MLFLOW_MENU` | Boolean | `true` | Inject sign-in/sign-out links and permission management navigation into MLflow's built-in UI |
+| `EXTEND_MLFLOW_REAUTH` | Boolean | `true` | Inject a small script into MLflow's UI that triggers a full page reload on any 401 response. Without this, an expired session leaves the SPA rendering empty pages until a manual force-reload, because React Router intercepts URL-bar navigations as soft routing |
 | `DEFAULT_LANDING_PAGE_IS_PERMISSIONS` | Boolean | `true` | Use the permissions management page as the default landing page in the admin UI |
 
 ### Feature Flags
@@ -106,6 +109,15 @@ The plugin uses Starlette's built-in cookie-based sessions:
 - The cookie is signed with `SECRET_KEY` — all replicas **must** share the same key
 - Sessions survive server restarts only if `SECRET_KEY` is explicitly configured
 
+Additional session cookie settings:
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SESSION_COOKIE_NAME` | String | `session` | Session cookie name |
+| `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Session expiry time in seconds, if set to `0` then the cookie will last as long as the browser session |
+| `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
+| `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
+
 ## MLflow Server Environment Variables
 
 MLflow natively supports environment variables for server configuration. These are not managed by the plugin but are commonly used alongside it:
@@ -149,6 +161,11 @@ OIDC_USERS_DB_URI=postgresql://mlflow:pass@db:5432/mlflow_auth
 
 # Explicit secret key for multi-replica deployments
 SECRET_KEY=your-random-64-char-hex-string
+
+# Secure session cookies
+SESSION_COOKIE_MAX_AGE_SECONDS=0
+SESSION_COOKIE_SAMESITE=strict
+SESSION_COOKIE_SECURE=true
 
 # Disable API docs
 ENABLE_API_DOCS=false

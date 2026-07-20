@@ -161,7 +161,7 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
         logger.debug("mlflow.server.assistant.api not available — Assistant endpoints disabled")
 
 
-def create_app() -> Any:
+def create_app() -> FastAPI:
     """Create a FastAPI application with OIDC integration.
 
     The app uses a lifespan context manager to ensure OIDC client registration
@@ -191,13 +191,22 @@ def create_app() -> Any:
     oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
-    oidc_app.add_middleware(StarletteSessionMiddleware, secret_key=config.SECRET_KEY)
+    oidc_app.add_middleware(
+        StarletteSessionMiddleware,
+        secret_key=config.SECRET_KEY,
+        session_cookie=config.SESSION_COOKIE_NAME,
+        max_age=config.SESSION_COOKIE_MAX_AGE_SECONDS,
+        same_site=config.SESSION_COOKIE_SAMESITE,
+        https_only=config.SESSION_COOKIE_SECURE,
+    )
 
     for router in get_all_routers():
         oidc_app.include_router(router)
 
-    # Add links to MLFlow UI
-    if config.EXTEND_MLFLOW_MENU:
+    # Inject into MLflow's index.html when the menu links or the re-auth helper
+    # are enabled. Both live in the same hack module to keep injection ordering
+    # predictable.
+    if config.EXTEND_MLFLOW_MENU or config.EXTEND_MLFLOW_REAUTH:
         from mlflow_oidc_auth import hack
 
         app.view_functions["serve"] = hack.index

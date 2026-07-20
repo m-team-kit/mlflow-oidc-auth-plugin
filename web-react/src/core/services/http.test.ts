@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http, extractErrorMessage } from "./http";
+import { http, extractErrorMessage, _resetReauthForTests } from "./http";
 
 vi.mock("../../shared/context/workspace-context", () => ({
   getActiveWorkspace: vi.fn(() => null),
@@ -125,6 +125,171 @@ describe("http", () => {
         credentials: "include",
       }),
     );
+  });
+
+  describe("401 reauth redirect", () => {
+    let assignSpy: ReturnType<typeof vi.fn>;
+    let originalLocation: Location;
+
+    beforeEach(() => {
+      _resetReauthForTests();
+      assignSpy = vi.fn();
+      // jsdom won't let us reassign window.location, so swap a stub in.
+      originalLocation = window.location;
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...originalLocation,
+          pathname: "/oidc/ui/users",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+      // Reset runtime config between tests.
+      delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
+    });
+
+    afterEachRestoreLocation: {
+      // jsdom limitation: the location stub is replaced per-test in beforeEach,
+      // so explicit restore isn't required.
+    }
+
+    it("redirects to /login with ?next= on 401 from a non-auth page", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledTimes(1);
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
+    });
+
+    it("preserves search and hash in ?next=", async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "/",
+          search: "?tab=runs",
+          hash: "#/experiments/0",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/?tab=runs#/experiments/0"),
+      );
+    });
+
+    it("does not redirect when already on the auth feature page", async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "/oidc/ui/auth",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it("redirects only once for concurrent 401s", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await Promise.allSettled([http("/a"), http("/b"), http("/c")]);
+      expect(assignSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses runtime config basePath for the login URL behind a proxy", async () => {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
+        basePath: "/proxy/path",
+      };
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/proxy/path/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
+    });
+
+    it("ignores <base href> (which points at /oidc/ui/) when redirecting", async () => {
+      // The plugin SPA's <base href> is the UI mount point — not the right
+      // anchor for /login, which lives at <basePath>/login.
+      const baseEl = document.createElement("base");
+      baseEl.setAttribute("href", "/oidc/ui/");
+      document.head.appendChild(baseEl);
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      // Falls back to root because no runtime config is set, so /login (NOT
+      // /oidc/ui/login) is what gets called.
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
+
+      baseEl.remove();
+    });
+
+    it("does not redirect on non-401 errors", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: new Headers(),
+        text: () => Promise.resolve("boom"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 500");
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
   });
 
   it("returns undefined for 204 No Content responses", async () => {

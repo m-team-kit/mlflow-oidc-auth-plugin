@@ -57,6 +57,20 @@ describe("AuthPage", () => {
     expect(alertDiv).toHaveClass("bg-red-100");
   });
 
+  it("renders footer with both copyright notices", () => {
+    render(<AuthPage />);
+
+    const currentYear = new Date().getFullYear();
+    expect(
+      screen.getByText(
+        new RegExp(`© ${currentYear} mlflow-oidc-quota maintainers`),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`© ${currentYear} Kharkevich Engineering Lab`)),
+    ).toBeInTheDocument();
+  });
+
   it("renders dark mode toggle", () => {
     render(<AuthPage />);
     expect(screen.getByTestId("dark-mode-toggle")).toBeInTheDocument();

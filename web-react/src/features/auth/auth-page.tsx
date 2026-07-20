@@ -102,8 +102,16 @@ export const AuthPage = () => {
       </div>
 
       <footer className="w-full py-6 flex flex-col ps-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
-        <div className="flex gap-4">
-          <span>powered by &copy; {currentYear} mlflow-oidc-auth</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <span>&copy; {currentYear} mlflow-oidc-quota maintainers</span>
+          <a
+            href="https://kharkevich.com/"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-3 hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+          >
+            &copy; {currentYear} Kharkevich Engineering Lab
+          </a>
         </div>
       </footer>
     </div>

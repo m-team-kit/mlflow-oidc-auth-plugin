@@ -430,11 +430,15 @@ def _get_workspace_gated_creation_paths() -> set[tuple[str, str]]:
     global _WORKSPACE_GATED_CREATION_PATHS
     if _WORKSPACE_GATED_CREATION_PATHS is None:
         from mlflow.protos.service_pb2 import CreateExperiment
+        from mlflow.protos.service_pb2 import CreateGatewayEndpoint
+        from mlflow.protos.service_pb2 import CreateGatewayModelDefinition
+        from mlflow.protos.service_pb2 import CreateGatewaySecret
         from mlflow.protos.model_registry_pb2 import CreateRegisteredModel
 
         paths = set()
-        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in (CreateExperiment, CreateRegisteredModel) else None):
-            if handler in (CreateExperiment, CreateRegisteredModel):
+        gated_creation_handlers = (CreateExperiment, CreateRegisteredModel, CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition)
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in gated_creation_handlers else None):
+            if handler in gated_creation_handlers:
                 for method in methods:
                     paths.add((http_path, method))
         _WORKSPACE_GATED_CREATION_PATHS = paths

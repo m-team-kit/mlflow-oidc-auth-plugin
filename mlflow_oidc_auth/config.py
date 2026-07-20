@@ -76,6 +76,15 @@ class AppConfig:
         self.SECRET_KEY = _secret_key
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
+        # Session cookie settings
+        self.SESSION_COOKIE_NAME = config_manager.get("SESSION_COOKIE_NAME", "session")
+        self.SESSION_COOKIE_MAX_AGE_SECONDS = config_manager.get_int("SESSION_COOKIE_MAX_AGE_SECONDS", default=14 * 24 * 60 * 60) or None
+        _session_cookie_samesite = config_manager.get("SESSION_COOKIE_SAMESITE", "lax").lower()
+        if _session_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError(f"Invalid SESSION_COOKIE_SAMESITE value: '{_session_cookie_samesite}'")
+        self.SESSION_COOKIE_SAMESITE = _session_cookie_samesite
+        self.SESSION_COOKIE_SECURE = config_manager.get_bool("SESSION_COOKIE_SECURE", default=False)
+
         # Database settings (sensitive)
         self.OIDC_USERS_DB_URI = config_manager.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
 
@@ -89,6 +98,15 @@ class AppConfig:
         self.OIDC_PROVIDER_DISPLAY_NAME = config_manager.get("OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC")
         self.OIDC_GROUPS_ATTRIBUTE = config_manager.get("OIDC_GROUPS_ATTRIBUTE", "groups")
         self.OIDC_AUDIENCE = config_manager.get("OIDC_AUDIENCE")
+
+        # Session re-authentication settings
+        # When True, the session is rejected once the IdP-issued access/ID token expires.
+        # Leeway compensates for clock skew between this server and the IdP.
+        self.OIDC_SESSION_EXPIRY_LEEWAY_SECONDS = config_manager.get_int("OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", default=30)
+        # When True, request `offline_access` and persist the refresh token so the
+        # session can be silently refreshed against the IdP on expiry. Many enterprises
+        # require additional approval for offline_access, so this is opt-in.
+        self.OIDC_USE_REFRESH_TOKEN = config_manager.get_bool("OIDC_USE_REFRESH_TOKEN", default=False)
 
         # JWKS caching settings
         self.OIDC_JWKS_CACHE_TTL_SECONDS = config_manager.get_int("OIDC_JWKS_CACHE_TTL_SECONDS", default=300)
@@ -110,6 +128,10 @@ class AppConfig:
 
         # UI settings
         self.EXTEND_MLFLOW_MENU = config_manager.get_bool("EXTEND_MLFLOW_MENU", default=True)
+        # Inject a small script into MLflow's index.html that forces a full reload on
+        # any 401 response, so expired sessions trigger the IdP redirect flow instead
+        # of leaving the user staring at empty SPA pages.
+        self.EXTEND_MLFLOW_REAUTH = config_manager.get_bool("EXTEND_MLFLOW_REAUTH", default=True)
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
         self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
 
