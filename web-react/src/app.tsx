@@ -66,6 +66,9 @@ const UserPermissionsPage = React.lazy(
 const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page"),
 );
+const QuotaAdminPage = React.lazy(
+  () => import("./features/quota/quota-admin-page"),
+);
 const NotFoundPage = React.lazy(
   () => import("./features/not-found/not-found-page"),
 );
@@ -396,6 +399,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WebhooksPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/user-quotas"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <QuotaAdminPage />
           </ProtectedLayoutRoute>
         }
       />

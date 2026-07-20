@@ -14,11 +14,12 @@ describe("sidebar-data", () => {
 
   it("returns extra links for admin including Users and Service Accounts", () => {
     const data = getSidebarData(true, false, false);
-    // 4 base + Users + Service Accounts + Trash + Webhooks = 8
-    expect(data).toHaveLength(8);
+    // 4 base + Users + Service Accounts + User Quotas + Trash + Webhooks = 9
+    expect(data).toHaveLength(9);
     const labels = data.map((item) => item.label);
     expect(labels).toContain("Users");
     expect(labels).toContain("Service Accounts");
+    expect(labels).toContain("User Quotas");
     expect(labels).toContain("Trash");
     expect(labels).toContain("Webhooks");
   });
@@ -50,10 +51,11 @@ describe("sidebar-data", () => {
 
   it("returns all links when everything enabled", () => {
     const data = getSidebarData(true, true, true);
-    // 4 base + 3 AI + 1 workspace + 4 admin = 12
-    expect(data).toHaveLength(12);
+    // 4 base + 3 AI + 1 workspace + 5 admin = 13
+    expect(data).toHaveLength(13);
     expect(data.map((item) => item.label)).toContain("AI Endpoints");
     expect(data.map((item) => item.label)).toContain("Workspaces");
+    expect(data.map((item) => item.label)).toContain("User Quotas");
     expect(data.map((item) => item.label)).toContain("Trash");
     expect(data.map((item) => item.label)).toContain("Webhooks");
   });

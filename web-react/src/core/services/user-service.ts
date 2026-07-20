@@ -40,6 +40,11 @@ export const fetchUserQuota = createDynamicApiFetcher<UserQuota, "GET_USER_QUOTA
   responseType: {} as UserQuota,
 });
 
+export const fetchAllUserQuotas = createStaticApiFetcher<UserQuota[]>({
+  endpointKey: "USER_QUOTAS",
+  responseType: [] as UserQuota[],
+});
+
 export const createUser = async (data: {
   username: string;
   display_name: string;

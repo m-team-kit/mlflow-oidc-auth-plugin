@@ -12,6 +12,7 @@ import {
   faKey,
   faHexagonNodesBolt,
   faBuilding,
+  faDatabase,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -100,6 +101,12 @@ export const getSidebarData = (
         href: "/service-accounts",
         isInternalLink: true,
         icon: faScrewdriver,
+      },
+      {
+        label: "User Quotas",
+        href: "/user-quotas",
+        isInternalLink: true,
+        icon: faDatabase,
       },
       { label: "Trash", href: "/trash", isInternalLink: true, icon: faTrash },
       {

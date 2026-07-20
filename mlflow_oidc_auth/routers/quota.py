@@ -47,6 +47,7 @@ class TransferOwnershipRequest(BaseModel):
 
 class QuotaResponse(BaseModel):
     username: str
+    display_name: Optional[str]
     user_id: int
     quota_bytes: Optional[int]
     soft_cap_fraction: float
@@ -57,11 +58,12 @@ class QuotaResponse(BaseModel):
     last_notified_at: Optional[str]
 
     @classmethod
-    def from_db_model(cls, quota: "SqlUserQuota", username: str) -> "QuotaResponse":
+    def from_db_model(cls, quota: "SqlUserQuota", username: str, display_name: Optional[str] = None) -> "QuotaResponse":
         from mlflow_oidc_auth.utils.quota import effective_quota_bytes, effective_soft_cap_fraction
 
         return cls(
             username=username,
+            display_name=display_name,
             user_id=quota.user_id,
             quota_bytes=effective_quota_bytes(quota),
             soft_cap_fraction=effective_soft_cap_fraction(quota),
@@ -73,7 +75,7 @@ class QuotaResponse(BaseModel):
         )
 
 
-@quota_router.get("/users", summary="List all user quotas")
+@quota_router.get("/users", summary="List all user quotas", response_model=list[QuotaResponse])
 async def list_user_quotas(is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -84,14 +86,14 @@ async def list_user_quotas(is_admin: bool = Depends(get_is_admin)) -> JSONRespon
             user = store.get_user_by_id(q.user_id)
             if user is None:
                 continue
-            result.append(QuotaResponse.from_db_model(q, user.username).model_dump())
+            result.append(QuotaResponse.from_db_model(q, user.username, user.display_name).model_dump())
         return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Error listing quotas: {e}")
         raise HTTPException(status_code=500, detail="Failed to list quotas")
 
 
-@quota_router.get("/users/{username}", summary="Get quota for a user")
+@quota_router.get("/users/{username}", summary="Get quota for a user", response_model=QuotaResponse)
 async def get_user_quota(
     username: str,
     current_username: str = Depends(get_username),
@@ -111,6 +113,7 @@ async def get_user_quota(
         if quota is None:
             response = QuotaResponse(
                 username=username,
+                display_name=user.display_name,
                 user_id=user.id,
                 quota_bytes=effective_quota_bytes(None),
                 soft_cap_fraction=effective_soft_cap_fraction(None),
@@ -121,7 +124,7 @@ async def get_user_quota(
                 last_notified_at=None,
             )
         else:
-            response = QuotaResponse.from_db_model(quota, username)
+            response = QuotaResponse.from_db_model(quota, username, user.display_name)
         return JSONResponse(content=response.model_dump())
     except HTTPException:
         raise

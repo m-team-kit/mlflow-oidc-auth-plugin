@@ -1,3 +1,5 @@
+import type { components } from "../../core/api/schema";
+
 export type UserSummary = {
   username: string;
   display_name: string;
@@ -18,17 +20,9 @@ export type CurrentUser = {
   username: string;
 };
 
-export interface UserQuota {
-  username: string;
-  user_id: number;
-  quota_bytes: number | null;
-  soft_cap_fraction: number;
-  used_bytes: number;
-  hard_blocked: boolean;
-  email: string | null;
-  last_reconciled_at: string | null;
-  soft_notified_at: string | null;
-}
+// Generated from the FastAPI OpenAPI spec (see `yarn gen:api`). The backend is
+// the single source of truth for this shape — do not hand-edit fields here.
+export type UserQuota = components["schemas"]["QuotaResponse"];
 
 export interface UserContextType {
   currentUser: CurrentUser | null;

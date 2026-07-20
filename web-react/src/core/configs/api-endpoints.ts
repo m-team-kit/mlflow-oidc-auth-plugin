@@ -17,6 +17,9 @@ export const STATIC_API_ENDPOINTS = {
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
 
+  // Quota management
+  USER_QUOTAS: "/oidc/quota/users",
+
   // Trash management
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
   TRASH_RUNS: "/oidc/trash/runs",
