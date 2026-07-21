@@ -5,7 +5,6 @@ import { QuotaBar } from "../../shared/components/quota-bar";
 import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { formatBytes } from "../../shared/utils/format-utils";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { UserQuota } from "../../shared/types/user";
 
@@ -54,20 +53,6 @@ export default function QuotaAdminPage() {
       render: ({ email }) => (
         <span className="truncate block" title={email ?? undefined}>
           {email || "—"}
-        </span>
-      ),
-    },
-    {
-      header: "Used",
-      render: ({ used_bytes }) => (
-        <span className="font-mono">{formatBytes(used_bytes)}</span>
-      ),
-    },
-    {
-      header: "Quota",
-      render: ({ quota_bytes }) => (
-        <span className="font-mono">
-          {quota_bytes === null ? "Unlimited" : formatBytes(quota_bytes)}
         </span>
       ),
     },
