@@ -5,6 +5,7 @@ import { QuotaBar } from "../../shared/components/quota-bar";
 import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
+import { RowActionButton } from "../../shared/components/row-action-button";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { UserQuota } from "../../shared/types/user";
 
@@ -63,6 +64,20 @@ export default function QuotaAdminPage() {
           <QuotaBar quota={quota} />
         </div>
       ),
+    },
+    {
+      header: "Permissions",
+      render: ({ username }) => (
+        <div className="invisible group-hover:visible">
+          <RowActionButton
+            entityId={username}
+            suffix="/experiments"
+            route="/users"
+            buttonText="Manage permissions"
+          />
+        </div>
+      ),
+      className: "flex-shrink-0",
     },
   ];
 
