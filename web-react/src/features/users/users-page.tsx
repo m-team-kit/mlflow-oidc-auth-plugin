@@ -20,13 +20,17 @@ export default function UsersPage() {
 
   const usersList = allUsers || [];
 
-  const filteredUsers = usersList.filter((u) =>
-    u.username.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const term = submittedTerm.toLowerCase();
+  const filteredUsers = usersList.filter(
+    (u) =>
+      u.username.toLowerCase().includes(term) ||
+      (u.display_name || "").toLowerCase().includes(term),
   );
 
   const tableData = filteredUsers.map((u) => ({
     id: u.username,
     username: u.username,
+    display_name: u.display_name,
   }));
 
   const renderPermissionsButton = (username: string) => (
@@ -40,12 +44,24 @@ export default function UsersPage() {
     </div>
   );
 
-  const columnsWithAction: ColumnConfig<{ id: string; username: string }>[] = [
+  const columnsWithAction: ColumnConfig<{
+    id: string;
+    username: string;
+    display_name: string;
+  }>[] = [
     {
       header: "Username",
       render: ({ username }) => (
         <span className="truncate block" title={username}>
           {username}
+        </span>
+      ),
+    },
+    {
+      header: "Display Name",
+      render: ({ display_name }) => (
+        <span className="truncate block" title={display_name || undefined}>
+          {display_name || "—"}
         </span>
       ),
     },
