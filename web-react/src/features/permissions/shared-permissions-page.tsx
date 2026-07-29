@@ -58,6 +58,13 @@ export const SharedPermissionsPage = ({
     );
   }
 
+  const displayName =
+    entityKind === "user" ? userDetails?.display_name : undefined;
+  const titleSubject =
+    displayName && displayName !== entityName
+      ? `${displayName} (${entityName})`
+      : entityName;
+
   const tabs = [
     { id: "experiments", label: "Experiments" },
     { id: "models", label: "Models" },
@@ -75,8 +82,8 @@ export const SharedPermissionsPage = ({
     <PageContainer
       title={
         isRegexMode
-          ? `Regex Permissions for ${entityName}`
-          : `Permissions for ${entityName}`
+          ? `Regex Permissions for ${titleSubject}`
+          : `Permissions for ${titleSubject}`
       }
     >
       <div className="flex items-end gap-6">

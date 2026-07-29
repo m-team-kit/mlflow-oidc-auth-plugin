@@ -34,7 +34,7 @@ export function QuotaBar({ quota }: { quota: UserQuota }) {
           {formatBytes(quota.used_bytes)} / {formatBytes(quota.quota_bytes)}
           {isHard && (
             <span className="ml-2 text-red-500 font-semibold">
-              quota exceeded
+              exceeded
             </span>
           )}
         </span>
