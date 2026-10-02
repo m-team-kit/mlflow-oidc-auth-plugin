@@ -6,6 +6,9 @@ creating users, creating access tokens, and deleting users with various
 scenarios including authentication, authorization, and error handling.
 """
 
+import json
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, timedelta
@@ -81,31 +84,35 @@ class TestListUsersEndpoint:
     @pytest.mark.asyncio
     async def test_list_users_default(self, mock_store):
         """Test listing users with default parameters."""
-        mock_store.list_usernames.return_value = [
-            "alice@example.com",
-            "bob@example.com",
+        mock_store.list_users.return_value = [
+            SimpleNamespace(username="alice@example.com", display_name="Alice"),
+            SimpleNamespace(username="bob@example.com", display_name="Bob"),
         ]
         with patch("mlflow_oidc_auth.store.store", mock_store):
             result = await list_users(username="test@example.com")
 
-        assert isinstance(result.body, bytes)
+        assert json.loads(result.body) == [
+            {"username": "alice@example.com", "display_name": "Alice"},
+            {"username": "bob@example.com", "display_name": "Bob"},
+        ]
         # Verify store was called with correct parameters
-        mock_store.list_usernames.assert_called_once_with(is_service_account=False)
+        mock_store.list_users.assert_called_once_with(is_service_account=False)
 
     @pytest.mark.asyncio
     async def test_list_users_service_accounts(self, mock_store):
         """Test listing service accounts only."""
-        mock_store.list_usernames.return_value = ["svc@example.com"]
+        mock_store.list_users.return_value = [SimpleNamespace(username="svc@example.com", display_name="Service")]
         with patch("mlflow_oidc_auth.store.store", mock_store):
             result = await list_users(service=True, username="test@example.com")
 
+        assert json.loads(result.body) == [{"username": "svc@example.com", "display_name": "Service"}]
         # Verify store was called with service account filter
-        mock_store.list_usernames.assert_called_once_with(is_service_account=True)
+        mock_store.list_users.assert_called_once_with(is_service_account=True)
 
     @pytest.mark.asyncio
     async def test_list_users_exception_handling(self, mock_store):
         """Test list users exception handling."""
-        mock_store.list_usernames.side_effect = Exception("Database error")
+        mock_store.list_users.side_effect = Exception("Database error")
 
         with patch("mlflow_oidc_auth.store.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:

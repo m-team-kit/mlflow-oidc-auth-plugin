@@ -7,9 +7,12 @@ to achieve 100% test coverage.
 
 import logging
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from mlflow_oidc_auth.logger import get_logger
+
+# get_logger() also mutes this MLflow logger, so it is looked up on first call too
+TYPE_HINTS_LOGGER = "mlflow.types.type_hints"
 
 
 class TestGetLogger:
@@ -26,6 +29,12 @@ class TestGetLogger:
         mock_logger.handlers = []
         mock_logger.propagate = False
         return mock_logger
+
+    def _patch_get_logger(self, mock_logger):
+        """Patch logging.getLogger to return mock_logger, routing the MLflow
+        type-hints logger to a separate mock so its setLevel call is kept apart."""
+        self.type_hints_logger = Mock(spec=logging.Logger)
+        return patch("logging.getLogger", side_effect=lambda name: self.type_hints_logger if name == TYPE_HINTS_LOGGER else mock_logger)
 
     def setup_method(self):
         """Reset the global logger instance before each test."""
@@ -53,14 +62,13 @@ class TestGetLogger:
 
     def test_get_logger_first_call_sets_up_logger(self):
         """Test that first call to get_logger sets up the logger."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             result = get_logger()
 
             # Should call getLogger with default name
-            mock_get_logger.assert_called_once_with("uvicorn")
+            assert mock_get_logger.call_args_list == [call("uvicorn"), call(TYPE_HINTS_LOGGER)]
             # Should set level to INFO
             mock_logger.setLevel.assert_called_once_with(logging.INFO)
             # Should set propagate to True
@@ -70,15 +78,14 @@ class TestGetLogger:
 
     def test_get_logger_subsequent_calls_return_same_logger(self):
         """Test that subsequent calls return the same logger instance."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             result1 = get_logger()
             result2 = get_logger()
 
-            # getLogger should only be called once
-            mock_get_logger.assert_called_once_with("uvicorn")
+            # getLogger should only be called on the first get_logger() call
+            assert mock_get_logger.call_args_list == [call("uvicorn"), call(TYPE_HINTS_LOGGER)]
             # Both results should be the same
             assert result1 is result2
             assert result1 is mock_logger
@@ -86,21 +93,19 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOGGING_LOGGER_NAME": "custom_logger"})
     def test_get_logger_with_custom_logger_name(self):
         """Test get_logger with custom LOGGING_LOGGER_NAME."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             result = get_logger()
 
-            mock_get_logger.assert_called_once_with("custom_logger")
+            assert mock_get_logger.call_args_list == [call("custom_logger"), call(TYPE_HINTS_LOGGER)]
             assert result is mock_logger
 
     @patch.dict(os.environ, {"LOG_LEVEL": "DEBUG"})
     def test_get_logger_with_debug_level(self):
         """Test get_logger with LOG_LEVEL set to DEBUG."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -109,9 +114,8 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOG_LEVEL": "WARNING"})
     def test_get_logger_with_warning_level(self):
         """Test get_logger with LOG_LEVEL set to WARNING."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -120,9 +124,8 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOG_LEVEL": "ERROR"})
     def test_get_logger_with_error_level(self):
         """Test get_logger with LOG_LEVEL set to ERROR."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -131,9 +134,8 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOG_LEVEL": "CRITICAL"})
     def test_get_logger_with_critical_level(self):
         """Test get_logger with LOG_LEVEL set to CRITICAL."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -142,9 +144,8 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOG_LEVEL": "INVALID"})
     def test_get_logger_with_invalid_log_level_defaults_to_info(self):
         """Test get_logger with invalid LOG_LEVEL defaults to INFO."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -153,9 +154,8 @@ class TestGetLogger:
 
     def test_get_logger_propagate_set_to_true(self):
         """Test that propagate is set to True."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
@@ -164,36 +164,41 @@ class TestGetLogger:
     @patch.dict(os.environ, {"LOGGING_LOGGER_NAME": "test_name", "LOG_LEVEL": "DEBUG"})
     def test_get_logger_with_both_env_vars(self):
         """Test get_logger with both LOGGING_LOGGER_NAME and LOG_LEVEL set."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             result = get_logger()
 
-            mock_get_logger.assert_called_once_with("test_name")
+            assert mock_get_logger.call_args_list == [call("test_name"), call(TYPE_HINTS_LOGGER)]
             mock_logger.setLevel.assert_called_once_with(logging.DEBUG)
             assert mock_logger.propagate == True
             assert result is mock_logger
 
     def test_get_logger_logger_name_default(self):
         """Test that default logger name is 'uvicorn'."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
-            mock_get_logger.assert_called_once_with("uvicorn")
+            assert mock_get_logger.call_args_list == [call("uvicorn"), call(TYPE_HINTS_LOGGER)]
 
     def test_get_logger_log_level_default(self):
         """Test that default log level is INFO."""
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = self._make_mock_logger()
-            mock_get_logger.return_value = mock_logger
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger) as mock_get_logger:
 
             get_logger()
 
             mock_logger.setLevel.assert_called_once_with(logging.INFO)
+
+    def test_get_logger_mutes_mlflow_type_hints_logger(self):
+        """Test that the MLflow type-hints logger is set to ERROR."""
+        mock_logger = self._make_mock_logger()
+        with self._patch_get_logger(mock_logger):
+            get_logger()
+
+            self.type_hints_logger.setLevel.assert_called_once_with(logging.ERROR)
 
     def test_get_logger_adds_stream_handler_if_none(self):
         """Logger without handlers should gain a StreamHandler."""

@@ -300,6 +300,7 @@ def mock_config():
     config_mock.MLFLOW_ENABLE_WORKSPACES = False
     config_mock.PRIVACY_POLICY_URL = None
     config_mock.TERMS_OF_SERVICE_URL = None
+    config_mock.LEGALS_URL = None
     return config_mock
 
 

@@ -67,6 +67,8 @@ class TestOidcWorkspaceAutoCreate:
                 },
             }
         )
+        # The callback fetches userinfo from the IdP rather than reading it from the token response
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=mock_oauth.oidc.authorize_access_token.return_value["userinfo"])
 
         # Mock MLflow workspace store — workspace doesn't exist
         mlflow_ws_store = MagicMock()
@@ -81,6 +83,8 @@ class TestOidcWorkspaceAutoCreate:
             patch("mlflow_oidc_auth.user.create_user"),
             patch("mlflow_oidc_auth.user.populate_groups"),
             patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_user_displayname"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
         ):
             email, errors = await _process_oidc_callback_fastapi(request, session)
 
@@ -117,6 +121,8 @@ class TestOidcWorkspaceAutoCreate:
                 },
             }
         )
+        # The callback fetches userinfo from the IdP rather than reading it from the token response
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=mock_oauth.oidc.authorize_access_token.return_value["userinfo"])
 
         # Mock MLflow workspace store — workspace exists
         mlflow_ws_store = MagicMock()
@@ -130,6 +136,8 @@ class TestOidcWorkspaceAutoCreate:
             patch("mlflow_oidc_auth.user.create_user"),
             patch("mlflow_oidc_auth.user.populate_groups"),
             patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_user_displayname"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
         ):
             email, errors = await _process_oidc_callback_fastapi(request, session)
 
@@ -163,6 +171,8 @@ class TestOidcWorkspaceAutoCreate:
                 },
             }
         )
+        # The callback fetches userinfo from the IdP rather than reading it from the token response
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=mock_oauth.oidc.authorize_access_token.return_value["userinfo"])
 
         # Mock MLflow workspace store — workspace doesn't exist and creation fails
         mlflow_ws_store = MagicMock()
@@ -177,6 +187,8 @@ class TestOidcWorkspaceAutoCreate:
             patch("mlflow_oidc_auth.user.create_user"),
             patch("mlflow_oidc_auth.user.populate_groups"),
             patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_user_displayname"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
         ):
             email, errors = await _process_oidc_callback_fastapi(request, session)
 
@@ -208,6 +220,8 @@ class TestOidcWorkspaceAutoCreate:
                 },
             }
         )
+        # The callback fetches userinfo from the IdP rather than reading it from the token response
+        mock_oauth.oidc.userinfo = AsyncMock(return_value=mock_oauth.oidc.authorize_access_token.return_value["userinfo"])
 
         request, session = self._make_request_and_session()
 
@@ -216,6 +230,8 @@ class TestOidcWorkspaceAutoCreate:
             patch("mlflow_oidc_auth.user.create_user"),
             patch("mlflow_oidc_auth.user.populate_groups"),
             patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.user.update_user_displayname"),
+            patch("mlflow_oidc_auth.user.update_quota_email"),
         ):
             # _get_workspace_store should never be called since workspaces are disabled
             with patch("mlflow.server.handlers._get_workspace_store") as mock_get_ws:

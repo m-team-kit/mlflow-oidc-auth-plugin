@@ -27,7 +27,7 @@ class TestWorkspacePermission:
         assert perm.username is None
 
     def test_to_json(self):
-        """to_json() returns dict with workspace, user_id, permission, username keys."""
+        """to_json() returns dict with workspace, user_id, permission, username, display_name keys."""
         perm = WorkspacePermission(workspace="ws1", user_id=42, permission="MANAGE", username="alice")
         result = perm.to_json()
         assert result == {
@@ -35,6 +35,7 @@ class TestWorkspacePermission:
             "user_id": 42,
             "permission": "MANAGE",
             "username": "alice",
+            "display_name": None,
         }
 
     def test_to_json_without_username(self):
