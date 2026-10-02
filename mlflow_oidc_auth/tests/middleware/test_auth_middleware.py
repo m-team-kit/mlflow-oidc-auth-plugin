@@ -196,7 +196,7 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert "No username provided" in error
+            assert "Could not determine username" in error
 
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_token(self, auth_middleware, mock_validate_token):

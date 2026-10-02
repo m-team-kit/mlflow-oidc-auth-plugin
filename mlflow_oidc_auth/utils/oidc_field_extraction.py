@@ -22,8 +22,9 @@ def extract_field_from_payload(
     Extract a field value from a payload using a configured list of field names.
 
     This function attempts to extract a value from the payload by iterating through
-    the configured field names in order and returning the first non-None value found.
-    The value must be a string; non-string values are rejected with an error.
+    the configured field names in order and returning the first non-empty value found.
+    Empty or whitespace-only values are treated as missing, so the next configured
+    field is tried. The value must be a string; non-string values are rejected with an error.
 
     Parameters:
         payload: Dictionary containing the fields to extract from (e.g., userinfo or token payload)
@@ -45,10 +46,16 @@ def extract_field_from_payload(
                 error_msg = f"Invalid OIDC {field_type_name} field: {field} is not a string"
                 logger.error(error_msg)
                 return None, error_msg
+            if not value.strip():
+                continue
             return value, None
 
     # No field found
-    return None, f"No {field_type_name} provided in OIDC userinfo"
+    label = field_type_name.replace("_", " ")
+    if len(field_list) == 1:
+        return None, f"Could not determine {label}: the identity provider did not provide a non-empty value for the '{field_list[0]}' claim"
+    claims = ", ".join(f"'{field}'" for field in field_list)
+    return None, f"Could not determine {label}: the identity provider did not provide a non-empty value for any of the claims {claims}"
 
 
 def extract_username(payload: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
@@ -71,14 +78,17 @@ def extract_username(payload: Dict[str, Any]) -> tuple[Optional[str], Optional[s
     return value.lower() if value else None, None
 
 
-def extract_display_name(payload: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+def extract_display_name(payload: Dict[str, Any], fallback: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """
     Extract display name from OIDC userinfo or token payload.
 
     Uses configured OIDC_DISPLAY_NAME_FIELD list to determine which fields to check.
+    If no configured field yields a usable value and a fallback is given, the fallback
+    is returned instead of an error, so a missing display name never blocks login.
 
     Parameters:
         payload: OIDC userinfo or token payload dictionary
+        fallback: Value to use when no display name can be extracted (typically the username)
 
     Returns:
         Tuple of (display_name, error_message) where:
@@ -86,5 +96,8 @@ def extract_display_name(payload: Dict[str, Any]) -> tuple[Optional[str], Option
         - error_message is an error string if extraction failed, None if successful
     """
     value, error_msg = extract_field_from_payload(payload, config.OIDC_DISPLAY_NAME_FIELD, "display_name")
+    if error_msg and fallback:
+        logger.warning(f"{error_msg}; using '{fallback}' as display name")
+        return fallback, None
     return value, error_msg
 

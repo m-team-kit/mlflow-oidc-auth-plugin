@@ -37,7 +37,22 @@ class TestExtractFieldFromPayload:
         payload = {"name": "John"}
         value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
         assert value is None
-        assert "No username provided in OIDC userinfo" in error
+        assert error == "Could not determine username: the identity provider did not provide a non-empty value for any of the claims 'email', 'preferred_username'"
+
+    def test_extract_no_field_found_single_field(self):
+        """Test error names the single missing claim."""
+        payload = {"name": "John"}
+        value, error = extract_field_from_payload(payload, ["email"], "username")
+        assert value is None
+        assert error == "Could not determine username: the identity provider did not provide a non-empty value for the 'email' claim"
+
+    @pytest.mark.parametrize("empty", ["", "   "])
+    def test_extract_empty_value_falls_back(self, empty):
+        """Test empty or whitespace-only values are skipped in favour of the next field."""
+        payload = {"email": empty, "preferred_username": "user"}
+        value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
+        assert value == "user"
+        assert error is None
 
     def test_extract_field_non_string_value(self):
         """Test error when field value is not a string."""
@@ -79,7 +94,24 @@ class TestExtractUsername:
         payload = {"name": "John"}
         username, error = extract_username(payload)
         assert username is None
-        assert "No username provided in OIDC userinfo" in error
+        assert error == "Could not determine username: the identity provider did not provide a non-empty value for any of the claims 'email', 'preferred_username'"
+
+    @pytest.mark.parametrize("empty", ["", "   "])
+    def test_extract_username_empty(self, monkeypatch, empty):
+        """Test error when the only username field is empty or whitespace-only."""
+        monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email"])
+        payload = {"email": empty}
+        username, error = extract_username(payload)
+        assert username is None
+        assert error == "Could not determine username: the identity provider did not provide a non-empty value for the 'email' claim"
+
+    def test_extract_username_empty_falls_back(self, monkeypatch):
+        """Test an empty email falls back to preferred_username."""
+        monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email", "preferred_username"])
+        payload = {"email": "", "preferred_username": "John.Doe"}
+        username, error = extract_username(payload)
+        assert username == "john.doe"
+        assert error is None
 
     def test_extract_username_non_string(self, monkeypatch):
         """Test error when username field is not a string."""
@@ -107,7 +139,29 @@ class TestExtractDisplayName:
         payload = {"email": "user@example.com"}
         display_name, error = extract_display_name(payload)
         assert display_name is None
-        assert "No display_name provided in OIDC userinfo" in error
+        assert error == "Could not determine display name: the identity provider did not provide a non-empty value for the 'name' claim"
+
+    @pytest.mark.parametrize("payload", [{}, {"name": ""}, {"name": "   "}, {"name": 123}])
+    def test_extract_display_name_uses_fallback(self, monkeypatch, payload):
+        """Test the fallback is returned without error when no usable display name exists."""
+        monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name"])
+        display_name, error = extract_display_name(payload, fallback="user@example.com")
+        assert display_name == "user@example.com"
+        assert error is None
+
+    def test_extract_display_name_prefers_claim_over_fallback(self, monkeypatch):
+        """Test a present display name claim wins over the fallback."""
+        monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name"])
+        display_name, error = extract_display_name({"name": "John Doe"}, fallback="user@example.com")
+        assert display_name == "John Doe"
+        assert error is None
+
+    def test_extract_display_name_empty_falls_back_to_next_field(self, monkeypatch):
+        """Test an empty display name claim falls back to the next configured field."""
+        monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name", "given_name"])
+        display_name, error = extract_display_name({"name": "", "given_name": "John"}, fallback="user@example.com")
+        assert display_name == "John"
+        assert error is None
 
     def test_extract_display_name_non_string(self, monkeypatch):
         """Test error when display name field is not a string."""

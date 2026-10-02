@@ -396,9 +396,9 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "No username provided" in errors[0]
+    assert "Could not determine username" in errors[0]
 
-    # missing display name
+    # missing display name falls back to username
     async def fake_exchange4(request):
         return {"access_token": "a", "id_token": "i"}
 
@@ -411,14 +411,19 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     monkeypatch.setattr(
         auth_router_mod.oauth.oidc,
         "userinfo",
-        lambda **kwargs: {"email": "e@x.com"},
+        lambda **kwargs: {"email": "e@x.com", "groups": ["other"]},
         raising=False,
     )
     monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name"], raising=False)
+    monkeypatch.setattr(config, "OIDC_GROUP_DETECTION_PLUGIN", "")
+    monkeypatch.setattr(config, "OIDC_ADMIN_GROUP_NAME", ["admin"])
+    monkeypatch.setattr(config, "OIDC_GROUP_NAME", ["users"])
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "No display_name provided" in errors[0]
+    # Display name falls back to the username, so extraction passes and the group check is reached
+    assert not any("display name" in e for e in errors)
+    assert "not allowed" in errors[0]
 
     # user not allowed
     async def fake_exchange5(request):

@@ -535,7 +535,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         if username_error:
             errors.append(username_error)
 
-        display_name, display_name_error = extract_display_name(userinfo)
+        display_name, display_name_error = extract_display_name(userinfo, fallback=username)
         if display_name_error:
             errors.append(display_name_error)
 

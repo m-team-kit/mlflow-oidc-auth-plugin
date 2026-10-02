@@ -577,7 +577,7 @@ class TestProcessOIDCCallbackFastAPI:
 
             assert email is None
             assert len(errors) == 1
-            assert "No username provided in OIDC userinfo" in errors[0]
+            assert errors[0].startswith("Could not determine username: the identity provider did not provide a non-empty value for")
 
     @pytest.mark.asyncio
     async def test_process_callback_unauthorized_user(self, mock_request_with_session, mock_oauth, mock_config):
@@ -717,7 +717,7 @@ class TestProcessOIDCCallbackLegacyUserMigration:
         assert errors == []
         assert email == "new-user-sub"
         mock_rename.assert_not_called()
-        mock_update_dn.assert_not_called()
+        mock_update_dn.assert_called_once_with("new-user-sub", "Test User")
 
     @pytest.mark.asyncio
     async def test_skips_migration_when_target_username_exists(self, mock_request_with_session, mock_oauth, mock_config):
@@ -748,7 +748,7 @@ class TestProcessOIDCCallbackLegacyUserMigration:
         assert errors == []
         assert email == "new-user-sub"
         mock_rename.assert_not_called()
-        mock_update_dn.assert_not_called()
+        mock_update_dn.assert_called_once_with("new-user-sub", "Test User")
 
     @pytest.mark.asyncio
     async def test_skips_migration_when_username_equals_email(self, mock_request_with_session, mock_oauth, mock_config):
@@ -841,7 +841,7 @@ class TestProcessOIDCCallbackLegacyUserMigration:
         assert errors == []
         assert email == "new-user-sub"
         mock_rename.assert_called_once()
-        mock_update_dn.assert_not_called()
+        mock_update_dn.assert_called_once_with("new-user-sub", "Test User")
         # Subsequent provisioning still runs
         mock_create.assert_called_once()
 
