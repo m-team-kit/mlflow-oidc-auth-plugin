@@ -10,7 +10,7 @@ from mlflow_oidc_auth.db.models._base import Base
 class SqlUserQuota(Base):
     __tablename__ = "user_quotas"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     quota_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     used_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     soft_cap_fraction: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

@@ -32,7 +32,7 @@ class SqlUser(Base):
         "SqlGatewayModelDefinitionPermission", backref="users"
     )
     gateway_secret_permissions: Mapped[list["SqlGatewaySecretPermission"]] = relationship("SqlGatewaySecretPermission", backref="users")
-    quota: Mapped[Optional["SqlUserQuota"]] = relationship("SqlUserQuota", uselist=False, backref="user")
+    quota: Mapped[Optional["SqlUserQuota"]] = relationship("SqlUserQuota", uselist=False, backref="user", cascade="all, delete-orphan", passive_deletes=True)
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",

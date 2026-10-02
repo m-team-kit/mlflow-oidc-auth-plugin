@@ -218,6 +218,7 @@ class UserRepository:
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
                 SqlUserGroup,
+                SqlUserQuota,
                 SqlWorkspacePermission,
                 SqlWorkspaceRegexPermission,
             )
@@ -253,6 +254,9 @@ class UserRepository:
             # Workspace permissions
             session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Quota
+            session.query(SqlUserQuota).filter(SqlUserQuota.user_id == user_id).delete(synchronize_session=False)
 
             # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
