@@ -196,3 +196,21 @@ def test_set_groups_for_user(repo, session):
         session.delete.assert_called_once_with(group1)
         assert session.add.call_count == 2
         session.flush.assert_called_once()
+
+
+def test_set_groups_for_user_dedupes_group_names(repo, session):
+    """Duplicate group names from the IdP must not create duplicate user_groups rows."""
+    user = MagicMock(id=1)
+    group1 = MagicMock(id=10)
+    group2 = MagicMock(id=20)
+    session.delete = MagicMock()
+    session.add = MagicMock()
+    session.flush = MagicMock()
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[]),
+        patch("mlflow_oidc_auth.repository.group.get_group", side_effect=[group1, group2]) as mock_get_group,
+    ):
+        repo.set_groups_for_user("user", ["g1", "g1", "g2"])
+        assert [c.args[1] for c in mock_get_group.call_args_list] == ["g1", "g2"]
+        assert session.add.call_count == 2

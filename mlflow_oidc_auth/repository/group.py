@@ -34,7 +34,7 @@ class GroupRepository:
         :param group_names: A list of group names to be created.
         """
         with self._Session() as session:
-            for group_name in group_names:
+            for group_name in dict.fromkeys(group_names):
                 group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).first()
                 if group is None:
                     group = SqlGroup(group_name=group_name)
@@ -137,7 +137,8 @@ class GroupRepository:
             user_groups = list_user_groups(session, user)
             for ug in user_groups:
                 session.delete(ug)
-            for group_name in group_names:
+            # duplicate groups violate unique_user_group inserts
+            for group_name in dict.fromkeys(group_names):
                 group = get_group(session, group_name)
                 user_group = SqlUserGroup(user_id=user.id, group_id=group.id)
                 session.add(user_group)
