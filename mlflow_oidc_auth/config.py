@@ -108,6 +108,24 @@ class AppConfig:
         # require additional approval for offline_access, so this is opt-in.
         self.OIDC_USE_REFRESH_TOKEN = config_manager.get_bool("OIDC_USE_REFRESH_TOKEN", default=False)
 
+        # External secrets store for user credentials. When VO and API are both set,
+        # rotating your own access token also writes the new token to this store,
+        # authenticated with the user's IdP access token.
+        self.USER_CREDENTIALS_SECRETS_VO = config_manager.get("USER_CREDENTIALS_SECRETS_VO", "")
+        self.USER_CREDENTIALS_SECRETS_API = config_manager.get("USER_CREDENTIALS_SECRETS_API", "")
+        self.USER_CREDENTIALS_SECRETS_PATH = config_manager.get("USER_CREDENTIALS_SECRETS_PATH", "/services/mlflow/credentials")
+        # The secrets store needs the user's IdP access token, which session users
+        # only have through the refresh token, so force refresh tokens on.
+        if self.USER_CREDENTIALS_SECRETS_VO and self.USER_CREDENTIALS_SECRETS_API and not self.OIDC_USE_REFRESH_TOKEN:
+            if str(config_manager.get("OIDC_USE_REFRESH_TOKEN") or "").strip():
+                logger.warning(
+                    "OIDC_USE_REFRESH_TOKEN is set to false but USER_CREDENTIALS_SECRETS_VO and USER_CREDENTIALS_SECRETS_API are set; "
+                    "ignoring OIDC_USE_REFRESH_TOKEN and enabling refresh tokens"
+                )
+            else:
+                logger.info("USER_CREDENTIALS_SECRETS_VO and USER_CREDENTIALS_SECRETS_API are set; enabling OIDC_USE_REFRESH_TOKEN")
+            self.OIDC_USE_REFRESH_TOKEN = True
+
         # JWKS caching settings
         self.OIDC_JWKS_CACHE_TTL_SECONDS = config_manager.get_int("OIDC_JWKS_CACHE_TTL_SECONDS", default=300)
 

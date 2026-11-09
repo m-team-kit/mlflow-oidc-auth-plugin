@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -13,6 +15,7 @@ from mlflow_oidc_auth.models import (
     CurrentUserProfile,
     GroupRecord,
 )
+from mlflow_oidc_auth.routers.auth import get_idp_access_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -37,6 +40,51 @@ CURRENT_USER = "/current"
 USERNAME = "/{username}"
 
 
+def _secrets_enabled() -> bool:
+    """True when the external user-credentials secrets store is configured."""
+
+    return bool(config.USER_CREDENTIALS_SECRETS_VO and config.USER_CREDENTIALS_SECRETS_API)
+
+
+async def _get_user_authorization(request: Optional[Request]) -> Optional[str]:
+    """Return an ``Authorization`` header value carrying the user's IdP access token.
+
+    Session users get a fresh token from the IdP via the refresh token in their
+    session cookie. Bearer callers already send an IdP JWT (validated by the auth
+    middleware), so it is passed through. Basic auth carries an MLflow token, not
+    an IdP token, so it returns None.
+    """
+
+    if request is None:
+        return None
+
+    if "session" in request.scope and request.session.get("username"):
+        idp_access_token = await get_idp_access_token(request.session)
+        if idp_access_token:
+            return f"Bearer {idp_access_token}"
+
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization
+
+    return None
+
+
+async def _update_credentials_secret(user_authorization: str, username: str, password: str) -> httpx.Response:
+    """Write the user's MLflow credentials to the external secrets store."""
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        return await client.post(
+            f"{config.USER_CREDENTIALS_SECRETS_API}/secrets",
+            params={
+                "vo": config.USER_CREDENTIALS_SECRETS_VO,
+                "secret_path": config.USER_CREDENTIALS_SECRETS_PATH,
+            },
+            json={"username": username, "password": password},
+            headers={"Authorization": user_authorization},
+        )
+
+
 @users_router.patch(
     CREATE_ACCESS_TOKEN,
     summary="Create user access token",
@@ -46,6 +94,7 @@ async def create_access_token(
     token_request: Optional[CreateAccessTokenRequest] = Body(None),
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
+    request: Request = None,  # type: ignore[assignment]  # injected by FastAPI; default keeps direct calls working
 ) -> JSONResponse:
     """
     Create a new access token for the authenticated user.
@@ -61,6 +110,9 @@ async def create_access_token(
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the authenticated user has admin permissions.
+    request : Request
+        The FastAPI request; used to get the user's IdP access token for the
+        secrets store (see ``_get_user_authorization``).
 
     Returns:
     --------
@@ -115,8 +167,26 @@ async def create_access_token(
         if user is None:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
-        # Generate new token and update user
         new_token = generate_token()
+
+        # Write the new token to the external secrets store before saving it, so a
+        # failure leaves the old token working instead of desyncing the two.
+        # Only when users rotate their own token: the IdP token belongs to the
+        # caller, so an admin's token must not write another user's secret.
+        if _secrets_enabled() and target_username == current_username:
+            user_authorization = await _get_user_authorization(request)
+            if user_authorization is None:
+                logger.warning(f"No IdP access token for {target_username}; skipping credentials secret update")
+            else:
+                try:
+                    secret_response = await _update_credentials_secret(user_authorization, target_username, new_token)
+                except httpx.HTTPError as exc:
+                    logger.error(f"Could not reach secrets API for {target_username}: {exc}")
+                    raise HTTPException(status_code=502, detail="Could not update secret")
+                if not secret_response.is_success:
+                    logger.warning(f"Could not update secret for {target_username}: {secret_response.status_code} {secret_response.text}")
+                    raise HTTPException(status_code=500, detail="Could not update secret")
+
         store.update_user(username=target_username, password=new_token, password_expiration=expiration)
         emit_audit_event(
             "user.token_rotate",

@@ -18,6 +18,9 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | Attribute name in the ID token that contains the user's group memberships |
 | `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS` | Integer | `30` | Clock-skew leeway applied to the IdP-issued token expiry. Sessions are rejected once `now >= expires_at - leeway`, forcing the user back through the OIDC login flow so IdP-side changes (deactivation, group changes, MFA enrollment) take effect within the token's lifetime instead of waiting for the cookie TTL |
 | `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request `offline_access` and persist the refresh token in the session so expired sessions are silently refreshed against the IdP without forcing a visible login. Disabled by default because many enterprises require additional approval for `offline_access` and because refresh tokens are persisted in the signed (but not encrypted) session cookie |
+| `USER_CREDENTIALS_SECRETS_VO` | String | `""` | VO (virtual organisation) passed as `vo` to the user-credentials secrets API. When both this and `USER_CREDENTIALS_SECRETS_API` are set, rotating your own access token first writes the new token to the secrets store (as `username`/`password`), authenticated with your IdP access token; if that write fails, the token is not rotated. Setting both also forces `OIDC_USE_REFRESH_TOKEN=true`, since session users need a refresh token to get an IdP access token |
+| `USER_CREDENTIALS_SECRETS_API` | String | `""` | Base URL of the user-credentials secrets API (`POST {api}/secrets`) |
+| `USER_CREDENTIALS_SECRETS_PATH` | String | `/services/mlflow/credentials` | Secret path passed as `secret_path` to the secrets API |
 
 ### Group and Access Control
 

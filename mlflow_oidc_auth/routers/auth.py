@@ -112,29 +112,57 @@ async def refresh_session_with_idp(session) -> bool:
     middleware.
     """
 
+    return await _exchange_refresh_token(session) is not None
+
+
+async def get_idp_access_token(session) -> Optional[str]:
+    """Return a fresh IdP access token for the session's user, or None.
+
+    Runs a refresh-token grant against the IdP using the refresh token stored
+    in the session cookie. The session is updated in place (new ``expires_at``
+    and, when the IdP rotates it, a new ``refresh_token``), so the caller's
+    response carries the updated cookie back to the browser.
+
+    The access token is never stored; callers should use it immediately.
+    Returns None when ``OIDC_USE_REFRESH_TOKEN`` is disabled, no refresh token
+    is stored, or the exchange fails.
+    """
+
+    token_response = await _exchange_refresh_token(session)
+    if not token_response:
+        return None
+    return token_response.get("access_token") or None
+
+
+async def _exchange_refresh_token(session) -> Optional[dict[str, Any]]:
+    """Run the refresh-token grant and persist the result to the session.
+
+    Returns the IdP token response on success, or None on any failure.
+    """
+
     if not config.OIDC_USE_REFRESH_TOKEN:
-        return False
+        return None
 
     refresh_token = session.get("refresh_token") if session is not None else None
     if not refresh_token:
-        return False
+        return None
 
     fetch_fn = getattr(oauth.oidc, "fetch_access_token", None)
     if fetch_fn is None:
         logger.warning("OIDC client has no fetch_access_token; cannot refresh session")
-        return False
+        return None
 
     try:
         new_token = await _maybe_await(fetch_fn(grant_type="refresh_token", refresh_token=refresh_token))
     except Exception as exc:
         logger.warning("OIDC refresh token exchange failed: %s", exc)
-        return False
+        return None
 
     if not new_token:
-        return False
+        return None
 
     _persist_session_auth(session, new_token)
-    return True
+    return new_token
 
 
 def _extract_session_expiry(token_response: dict[str, Any]) -> Optional[int]:
