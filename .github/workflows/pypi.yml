@@ -7,6 +7,7 @@ on:
 jobs:
   pypi-publish:
     name: upload release to PyPI
+    if: ${{ github.repository == 'mlflow-oidc/mlflow-oidc-auth' }}
     runs-on: ubuntu-latest
     environment:
       name: PyPI
