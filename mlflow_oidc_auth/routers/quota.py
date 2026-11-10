@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.responses import MessageResponse
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 
@@ -133,7 +134,7 @@ async def get_user_quota(
         raise HTTPException(status_code=500, detail="Failed to get quota")
 
 
-@quota_router.put("/users/{username}", summary="Set quota for a user")
+@quota_router.put("/users/{username}", summary="Set quota for a user", response_model=MessageResponse)
 async def set_user_quota(
     username: str,
     quota_request: SetQuotaRequest = Body(...),
@@ -154,7 +155,7 @@ async def set_user_quota(
         raise HTTPException(status_code=500, detail="Failed to set quota")
 
 
-@quota_router.delete("/users/{username}", summary="Remove quota for a user (unlimited)")
+@quota_router.delete("/users/{username}", summary="Remove quota for a user (unlimited)", response_model=MessageResponse)
 async def delete_user_quota(
     username: str,
     is_admin: bool = Depends(get_is_admin),
@@ -169,7 +170,7 @@ async def delete_user_quota(
         raise HTTPException(status_code=500, detail="Failed to delete quota")
 
 
-@quota_router.post("/reconcile", summary="Trigger manual quota reconciliation")
+@quota_router.post("/reconcile", summary="Trigger manual quota reconciliation", response_model=MessageResponse)
 async def trigger_reconcile(is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -178,13 +179,12 @@ async def trigger_reconcile(is_admin: bool = Depends(get_is_admin)) -> JSONRespo
 
     errors = reconcile_all_quotas()
     if errors:
-      return JSONResponse(status_code=500, content={
-        "errors": errors
-      })
+        return JSONResponse(status_code=500, content={"errors": errors})
 
     return JSONResponse(content={"message": "Quota reconciliation triggered"})
 
-@ownership_router.post("/{experiment_id}/transfer-ownership", summary="Transfer experiment ownership")
+
+@ownership_router.post("/{experiment_id}/transfer-ownership", summary="Transfer experiment ownership", response_model=MessageResponse)
 async def transfer_experiment_ownership(
     experiment_id: str,
     body: TransferOwnershipRequest = Body(...),

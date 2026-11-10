@@ -18,6 +18,16 @@ from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
+# Redis SCAN MATCH is a glob pattern, so metacharacters in a caller-supplied
+# prefix (e.g. a username) must be escaped or they could widen the match.
+_GLOB_METACHARS = ("\\", "*", "?", "[", "]")
+
+
+def _escape_glob(value: str) -> str:
+    for char in _GLOB_METACHARS:
+        value = value.replace(char, "\\" + char)
+    return value
+
 
 class RedisCacheBackend:
     """Redis-backed cache with TTL and namespace prefix.
@@ -38,12 +48,14 @@ class RedisCacheBackend:
         self._prefix = prefix
         self._ttl = ttl
 
-        # Verify connectivity at init time so misconfig fails fast
+        # Verify connectivity at init time so misconfig fails fast. Neither the log line nor the
+        # raised message names the URL, which can carry the Redis password; the chained redis
+        # exception still says what went wrong (refused, timeout, authentication).
         try:
             self._client.ping()
-            logger.info("Redis cache backend connected to %s", url)
+            logger.info("Redis cache backend connected")
         except redis.ConnectionError as e:
-            raise ConnectionError(f"Cannot connect to Redis at {url}: {e}") from e
+            raise ConnectionError(f"Cannot connect to Redis cache backend ({type(e).__name__})") from e
 
     def _make_key(self, key: str) -> str:
         return f"{self._prefix}{key}"
@@ -61,13 +73,24 @@ class RedisCacheBackend:
     def delete(self, key: str) -> None:
         self._client.delete(self._make_key(key))
 
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete every key in this namespace starting with ``prefix``.
+
+        Uses SCAN to avoid blocking the server (no KEYS *). The caller-supplied
+        prefix is escaped so glob metacharacters in a username cannot widen the
+        match beyond the intended entries.
+        """
+        self._scan_delete(f"{self._make_key(_escape_glob(prefix))}*")
+
     def clear(self) -> None:
         """Delete all keys matching this backend's prefix.
 
         Uses SCAN to avoid blocking the server (no KEYS *).
         """
+        self._scan_delete(f"{self._prefix}*")
+
+    def _scan_delete(self, pattern: str) -> None:
         cursor = 0
-        pattern = f"{self._prefix}*"
         while True:
             cursor, keys = self._client.scan(cursor=cursor, match=pattern, count=500)
             if keys:

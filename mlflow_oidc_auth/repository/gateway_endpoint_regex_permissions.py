@@ -4,6 +4,7 @@ Parameter order differs from the base class (``id`` comes first in
 ``get``, ``update`` and ``revoke``), so those methods are overridden.
 """
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGatewayEndpointRegexPermission
 from mlflow_oidc_auth.entities import GatewayEndpointRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
@@ -12,7 +13,7 @@ from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
 class GatewayEndpointPermissionRegexRepository(BaseRegexPermissionRepository[SqlGatewayEndpointRegexPermission, GatewayEndpointRegexPermission]):
-    model_class = SqlGatewayEndpointRegexPermission
+    grant_kind = permission_kinds.GATEWAY_ENDPOINT
 
     # -- Parameter-order overrides --------------------------------------------
 
@@ -25,7 +26,7 @@ class GatewayEndpointPermissionRegexRepository(BaseRegexPermissionRepository[Sql
     def update(self, id: int, regex: str, priority: int, permission: str, username: str) -> GatewayEndpointRegexPermission:  # type: ignore[override]
         validate_regex(regex)
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session, user.id, id)
             perm.priority = priority
@@ -34,7 +35,7 @@ class GatewayEndpointPermissionRegexRepository(BaseRegexPermissionRepository[Sql
             return perm.to_mlflow_entity()
 
     def revoke(self, id: int, username: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session, user.id, id)
             session.delete(perm)

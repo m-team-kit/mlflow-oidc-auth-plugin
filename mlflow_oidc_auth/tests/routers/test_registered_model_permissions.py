@@ -46,7 +46,7 @@ class TestGetRegisteredModelGroupsEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_registered_model_groups_success(self, mock_store):
-        mock_store.registered_model_group_repo.list_groups_for_model.return_value = [
+        mock_store.registered_model_group_repo.list_groups_for_resource.return_value = [
             ("team-a", "READ"),
             ("team-b", "MANAGE"),
         ]
@@ -63,7 +63,7 @@ class TestGetRegisteredModelGroupsEndpoint:
         assert result[1].kind == "group"
 
     def test_get_registered_model_groups_integration(self, admin_client, mock_store):
-        mock_store.registered_model_group_repo.list_groups_for_model.return_value = []
+        mock_store.registered_model_group_repo.list_groups_for_resource.return_value = []
         response = admin_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/groups")
         assert response.status_code == 200
 
@@ -78,8 +78,6 @@ class TestGetRegisteredModelUsersEndpoint:
         user1 = User(
             id_=1,
             username="user1@example.com",
-            password_hash="hash1",
-            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
@@ -89,8 +87,6 @@ class TestGetRegisteredModelUsersEndpoint:
         user2 = User(
             id_=2,
             username="service@example.com",
-            password_hash="hash2",
-            password_expiration=None,
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
@@ -100,8 +96,6 @@ class TestGetRegisteredModelUsersEndpoint:
         user3 = User(
             id_=3,
             username="user3@example.com",
-            password_hash="hash3",
-            password_expiration=None,
             display_name="User 3",
             is_admin=False,
             is_service_account=False,
@@ -199,8 +193,8 @@ class TestGetRegisteredModelUsersEndpoint:
     def test_get_registered_model_users_non_admin_without_manage_permission(self, authenticated_client):
         """Non-admin lacking manage rights should be forbidden."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=MagicMock(permission=MagicMock(can_manage=False)),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
@@ -398,8 +392,8 @@ class TestRegisteredModelPermissionsRouterIntegration:
     def test_model_user_permissions_requires_admin(self, authenticated_client):
         """Test that model user permissions endpoint requires admin privileges."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=MagicMock(permission=MagicMock(can_manage=False)),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 

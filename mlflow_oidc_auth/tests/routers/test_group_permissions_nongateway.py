@@ -116,6 +116,113 @@ class TestListGroups:
 
 
 # ========================================================================================
+# GROUP CREATION
+# ========================================================================================
+
+
+@pytest.mark.usefixtures("authenticated_session", "override_admin")
+class TestCreateGroup:
+    """Tests for create_group endpoint."""
+
+    def test_create_group_success(self, authenticated_client, mock_store):
+        """Test creating a group that does not exist yet."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = ["analysts"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 201
+        assert resp.json()["message"] == "Group analysts successfully created"
+        mock_store.get_group_detail.assert_called_once_with("analysts", with_members=False)
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_already_exists(self, authenticated_client, mock_store):
+        """Test creating a group that already exists leaves it untouched."""
+        mock_store.get_group_detail.return_value = {"group_name": "devs", "external_id": None, "managed_by": "manual"}
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs"})
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Group devs already exists"
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_lost_concurrent_insert_race(self, authenticated_client, mock_store):
+        """A concurrent writer (e.g. a member's first login) creating the same group first is not
+        an error: the request still succeeds, as 200 rather than 201.
+
+        ``store.get_group_detail`` sees nothing at the initial check (nobody had created the group
+        yet), but ``populate_groups`` — which tolerates the resulting IntegrityError internally —
+        reports back that this call did not win the race, exactly as if the initial check had
+        found the group.
+        """
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = []  # Lost the race; nothing created by this call.
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Group analysts already exists"
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_strips_surrounding_whitespace(self, authenticated_client, mock_store):
+        """Test the group name is trimmed before it reaches the store."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = ["analysts"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "  analysts  "})
+        assert resp.status_code == 201
+        mock_store.get_group_detail.assert_called_once_with("analysts", with_members=False)
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_blank_name(self, authenticated_client, mock_store):
+        """Test rejecting a group name that is empty once trimmed."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "   "})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_error(self, authenticated_client, mock_store):
+        """Test error handling when group creation fails."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.side_effect = Exception("DB error")
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 500
+
+    def test_create_group_name_too_long(self, authenticated_client, mock_store):
+        """Test rejecting a group name over the shared SCIM/admin-API length bound."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "a" * 256})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    @pytest.mark.parametrize("group_name", ["devs?prod", "devs#prod", "devs%prod", ".", ".."])
+    def test_create_group_reserved_character(self, authenticated_client, mock_store, group_name):
+        """Test rejecting a name with a URL query, fragment or escape character, or a dot segment."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": group_name})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    @pytest.mark.parametrize("group_name", ["devs/prod", "/data-science", "/org/team"])
+    def test_create_group_with_slash(self, authenticated_client, mock_store, group_name):
+        """A "/" is allowed, as in Keycloak's group paths: the group routes match the name as one segment."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = [group_name]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": group_name})
+        assert resp.status_code == 201
+        mock_store.populate_groups.assert_called_once_with([group_name], written_by="manual")
+
+    def test_create_group_does_not_reown_scim_managed_group(self, authenticated_client, mock_store):
+        """Creating a group that already exists (e.g. SCIM-managed) must not touch its ownership."""
+        mock_store.get_group_detail.return_value = {"group_name": "directory-team", "external_id": "okta-1", "managed_by": "scim"}
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "directory-team"})
+        assert resp.status_code == 200
+        # No write at all reaches the store, so a group another source owns keeps that owner.
+        mock_store.populate_groups.assert_not_called()
+
+
+@pytest.mark.usefixtures("authenticated_session")
+class TestCreateGroupDenied:
+    """Non-admins cannot create groups."""
+
+    def test_create_group_denied_for_non_admin(self, authenticated_client, mock_store):
+        """Test that a non-admin user cannot create a group."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 403
+        mock_store.populate_groups.assert_not_called()
+
+
+# ========================================================================================
 # GROUP USERS
 # ========================================================================================
 
@@ -253,7 +360,7 @@ class TestGroupRegisteredModelList:
         mock_store.get_group_models.return_value = [model_perm]
 
         with patch(
-            f"{_GP}.effective_registered_model_permission",
+            f"{_GP}.effective_registry_permission",
             return_value=_mock_eff_perm(),
         ):
             resp = authenticated_client.get(f"{GROUP_BASE}/devs/registered-models")
@@ -279,7 +386,7 @@ class TestGroupRegisteredModelCRUD:
     def test_create_non_admin_with_manage(self, authenticated_client, mock_store):
         """Non-admin with manage permission can create."""
         with patch(
-            f"{_GP}.effective_registered_model_permission",
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
             return_value=_mock_eff_perm(),
         ):
             resp = authenticated_client.post(
@@ -292,7 +399,7 @@ class TestGroupRegisteredModelCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.post(
                 f"{GROUP_BASE}/devs/registered-models/my-model",
                 json={"permission": "READ"},
@@ -325,7 +432,7 @@ class TestGroupRegisteredModelCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.delete(f"{GROUP_BASE}/devs/registered-models/my-model")
         assert resp.status_code == 403
 
@@ -365,7 +472,7 @@ class TestGroupPromptList:
         prompt_perm.permission = "READ"
         mock_store.get_group_prompts.return_value = [prompt_perm]
 
-        with patch(f"{_GP}.effective_prompt_permission", return_value=_mock_eff_perm()):
+        with patch(f"{_GP}.effective_registry_permission", return_value=_mock_eff_perm()):
             resp = authenticated_client.get(f"{GROUP_BASE}/devs/prompts")
         assert resp.status_code == 200
 
@@ -388,7 +495,7 @@ class TestGroupPromptCRUD:
 
     def test_create_non_admin_with_manage(self, authenticated_client, mock_store):
         """Non-admin with manage permission can create."""
-        with patch(f"{_GP}.effective_prompt_permission", return_value=_mock_eff_perm()):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=_mock_eff_perm()):
             resp = authenticated_client.post(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "READ"})
         assert resp.status_code == 201
 
@@ -396,7 +503,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.post(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "READ"})
         assert resp.status_code == 403
 
@@ -415,7 +522,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.patch(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "EDIT"})
         assert resp.status_code == 403
 
@@ -434,7 +541,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.delete(f"{GROUP_BASE}/devs/prompts/my-prompt")
         assert resp.status_code == 403
 

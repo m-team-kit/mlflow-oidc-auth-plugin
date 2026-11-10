@@ -9,8 +9,10 @@ from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_gateway_secrets, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_secrets
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 logger = get_logger()
 
@@ -46,7 +48,7 @@ async def get_gateway_secret_users(
     for user in list_users:
         user_secrets = {}
         if hasattr(user, "gateway_secret_permissions") and user.gateway_secret_permissions:
-            user_secrets = {g.secret_id: g.permission for g in user.gateway_secret_permissions}
+            user_secrets = {g.secret_id: g.permission for g in user.gateway_secret_permissions if in_grant_workspace(g)}
 
         if name in user_secrets:
             users.append(
@@ -85,7 +87,7 @@ async def get_gateway_secret_groups(
     summary="List all gateway secrets",
     description="Retrieves a list of all gateway secrets from MLflow.",
 )
-async def list_gateway_secrets(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_gateway_secrets(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List gateway secrets accessible to the authenticated user.
 
@@ -99,6 +101,9 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible items.
 
     Returns:
     --------
@@ -121,14 +126,18 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
             # Regular users only see secrets they can manage
             secrets = filter_manageable_gateway_secrets(username, all_secrets)
 
+        # Paginate strictly after the permission filter: the total never counts a hidden item
+        secrets, headers = paginate_with_headers(secrets, key=lambda s: s.get("secret_name") or s.get("name") or s.get("key", ""), params=page)
+
         # Format the response to match the expected frontend schema
         return JSONResponse(
+            headers=headers,
             content=[
                 {
                     "key": secret.get("secret_name") or secret.get("name") or secret.get("key", ""),
                 }
                 for secret in secrets
-            ]
+            ],
         )
     except Exception as e:
         logger.error(f"Error listing gateway secrets: {e}")

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from mlflow.exceptions import MlflowException
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import effective_experiment_permission, effective_registered_model_permission
+from mlflow_oidc_auth.utils import effective_experiment_permission, get_run_experiment_id
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 
 logger = get_logger()
 
@@ -86,14 +87,13 @@ def _can_read_run(run_id: str, username: str) -> bool:
     """
 
     tracking_store = _get_tracking_store()
-    run = tracking_store.get_run(run_id)
-    return _can_read_experiment(run.info.experiment_id, username)
+    return _can_read_experiment(get_run_experiment_id(tracking_store, run_id), username)
 
 
 def _can_read_model(model_name: str, username: str) -> bool:
-    """Check READ access to a registered model for a user."""
+    """Check READ access to a registered model for a user, as a prompt when it is one (#479)."""
     logger.debug(f"GraphQL checking READ access to model {model_name} for user {username}")
-    return effective_registered_model_permission(model_name, username).permission.can_read
+    return effective_registry_permission(model_name, username).permission.can_read
 
 
 def _extract_first_filter_value(filter_str: str, key: str) -> Optional[str]:
@@ -127,6 +127,8 @@ class GraphQLAuthorizationMiddleware:
     - Only a limited set of GraphQL fields are protected.
     - Unauthorized access results in `null` fields rather than a REST 403.
     - For search-like fields, experiment ids are filtered to readable ones.
+    - Nested ``modelVersions`` lists (e.g. ``run.modelVersions``) are filtered to the
+      versions whose registered model the caller can read.
 
     The middleware relies on auth context injected by FastAPI into the Flask WSGI
     environ (via `mlflow_oidc_auth.bridge`).
@@ -145,6 +147,11 @@ class GraphQLAuthorizationMiddleware:
         "modelVersions",
     }
 
+    def __init__(self) -> None:
+        # One instance serves one request; memoize model READ decisions across the
+        # ``modelVersions`` fields of every run in the response.
+        self._model_read_cache: dict[tuple[str, str], bool] = {}
+
     def resolve(self, next_: Callable[..., Any], root: Any, info: Any, **args: Any) -> Any:
         """Graphene middleware resolve hook."""
 
@@ -161,6 +168,9 @@ class GraphQLAuthorizationMiddleware:
         if auth.is_admin:
             return next_(root, info, **args)
 
+        if field_name == "modelVersions":
+            return self._resolve_model_versions(next_, root, info, auth.username, **args)
+
         try:
             if not self._check_authorization(field_name, root, args, auth.username):
                 logger.debug(f"GraphQL authorization denied for {field_name} by user {auth.username}")
@@ -173,6 +183,58 @@ class GraphQLAuthorizationMiddleware:
             return None
 
         return next_(root, info, **args)
+
+    def _cached_can_read_model(self, model_name: str, username: str) -> bool:
+        """READ on a registered model, memoized for this request; any lookup error denies."""
+        key = (model_name, username)
+        if key not in self._model_read_cache:
+            try:
+                self._model_read_cache[key] = bool(_can_read_model(model_name, username))
+            except Exception:
+                logger.debug("GraphQL model permission lookup failed")
+                self._model_read_cache[key] = False
+        return self._model_read_cache[key]
+
+    def _resolve_model_versions(self, next_: Callable[..., Any], root: Any, info: Any, username: str, **args: Any) -> Any:
+        """Resolve a nested ``modelVersions`` list, keeping only versions of readable models.
+
+        ``run.modelVersions`` is resolved by MLflow through an unfiltered model-version search,
+        so the run's experiment grant says nothing about the registered models it returns. The
+        run's experiment must still be readable; each returned version is then kept only if the
+        caller can READ its registered model. A version whose model cannot be determined is
+        dropped.
+
+        Parameters:
+            next_: The next resolver in the chain.
+            root: The parent object (a run for ``run.modelVersions``).
+            info: GraphQL resolve info.
+            username: The non-admin caller.
+            args: Field arguments.
+
+        Returns:
+            The filtered list, or None if the run is not readable or the result is not a list.
+        """
+        try:
+            experiment_id = getattr(getattr(root, "info", None), "experiment_id", None)
+            if experiment_id is not None and not _can_read_experiment(str(experiment_id), username):
+                return None
+        except Exception:
+            logger.debug("GraphQL experiment permission lookup failed")
+            return None
+
+        result = next_(root, info, **args)
+        if result is None:
+            return None
+        try:
+            versions = list(result)
+        except TypeError:
+            return None
+        readable = []
+        for mv in versions:
+            name = mv.get("name") if isinstance(mv, dict) else getattr(mv, "name", None)
+            if name and self._cached_can_read_model(str(name), username):
+                readable.append(mv)
+        return readable
 
     def _check_authorization(self, field_name: str, root: Any, args: dict[str, Any], username: str) -> bool:
         """Return True if the user is authorized for the requested GraphQL field."""
@@ -204,12 +266,6 @@ class GraphQLAuthorizationMiddleware:
                 return False
             _set_input_attr(input_obj, "experiment_ids", readable_ids)
             return True
-
-        if field_name == "modelVersions":
-            # Field is resolved on an MlflowRun object; permissions inherit from the
-            # parent experiment (same as run read).
-            experiment_id = getattr(getattr(root, "info", None), "experiment_id", None)
-            return True if experiment_id is None else _can_read_experiment(str(experiment_id), username)
 
         if field_name == "mlflowSearchModelVersions":
             filter_str = _get_input_attr(input_obj, "filter") or _get_input_attr(input_obj, "filter_string")

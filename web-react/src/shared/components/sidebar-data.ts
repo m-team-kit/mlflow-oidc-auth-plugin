@@ -13,6 +13,9 @@ import {
   faHexagonNodesBolt,
   faBuilding,
   faDatabase,
+  faPlug,
+  faSitemap,
+  faServer,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -44,6 +47,13 @@ export const getSidebarData = (
       href: "/models",
       isInternalLink: true,
       icon: faHexagonNodes,
+    },
+    // MLflow's MCP server registry: not part of the AI gateway, so not behind its flag.
+    {
+      label: "MCP Servers",
+      href: "/mcp-servers",
+      isInternalLink: true,
+      icon: faServer,
     },
   ];
 
@@ -115,7 +125,22 @@ export const getSidebarData = (
         isInternalLink: true,
         icon: faWrench,
       },
+      {
+        label: "SCIM",
+        href: "/scim",
+        isInternalLink: true,
+        icon: faPlug,
+      },
     ];
+
+    if (workspacesEnabled) {
+      adminLinks.push({
+        label: "Workspace rules",
+        href: "/workspace-rules",
+        isInternalLink: true,
+        icon: faSitemap,
+      });
+    }
 
     sidebarContent = [...sidebarContent, ...adminLinks];
   }

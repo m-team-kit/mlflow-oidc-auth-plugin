@@ -5,7 +5,7 @@
 ## Languages
 
 **Primary:**
-- Python 3.12 - Backend server, auth plugin, CLI, database models, API routers (`.python-version`, CI uses `python-version: 3.12`)
+- Python 3.14 - Backend server, auth plugin, CLI, database models, API routers (`.python-version`, CI uses `python-version: 3.14`)
 - TypeScript ~5.9 - React frontend UI (`web-react/package.json`)
 
 **Secondary:**
@@ -16,7 +16,7 @@
 ## Runtime
 
 **Python Environment:**
-- Python >=3.10 (declared in `pyproject.toml`), 3.12 used in development/CI
+- Python >=3.11 (declared in `pyproject.toml`), 3.14 used in development/CI
 - Tox test matrix targets `py314` (`tox.ini` envlist)
 
 **Node Environment:**
@@ -34,7 +34,7 @@
 - FastAPI >=0.132.0 - Primary ASGI application framework (`pyproject.toml`, `mlflow_oidc_auth/app.py`)
 - Flask <4 - MLflow's built-in web framework, mounted as WSGI under FastAPI (`mlflow_oidc_auth/app.py`)
 - Starlette - Underlying ASGI framework (via FastAPI), session middleware (`starlette.middleware.sessions`)
-- MLflow >=3.10.0, <4 - ML experiment tracking server; this project is an auth plugin (`pyproject.toml`)
+- MLflow >=3.16.0, <4 - ML experiment tracking server; this project is an auth plugin (`pyproject.toml`)
 
 **Frontend:**
 - React 19.1 - UI framework (`web-react/package.json`)
@@ -62,7 +62,7 @@
 ## Key Dependencies
 
 **Critical Runtime (Python):**
-- `mlflow` >=3.10.0, <4 - Core tracking server this plugin extends (`pyproject.toml`)
+- `mlflow` >=3.16.0, <4 - Core tracking server this plugin extends (`pyproject.toml`)
 - `fastapi` >=0.132.0 - ASGI web framework for auth routes (`pyproject.toml`)
 - `uvicorn` >=0.41.0 - ASGI server (`pyproject.toml`)
 - `authlib` <2 - OIDC/OAuth2 client library, JWT validation (`mlflow_oidc_auth/oauth.py`, `mlflow_oidc_auth/auth.py`)
@@ -70,7 +70,8 @@
 - `alembic` <2, !=1.18.4 - Database migrations (`mlflow_oidc_auth/db/utils.py`)
 - `flask` <4 - MLflow's web layer, hooks registered directly (`mlflow_oidc_auth/app.py`)
 - `requests` >=2.32.5, <3 - HTTP client for OIDC discovery/JWKS (`mlflow_oidc_auth/auth.py`)
-- `httpx` >=0.28.1 - Async HTTP client (`pyproject.toml`)
+- `httpx2` >=2.0.0 - Async HTTP client, used by `authlib`'s Starlette OAuth client and by
+  `starlette.testclient`/`fastapi.testclient` (`pyproject.toml`)
 - `python-dotenv` <2 - `.env` file loading (`mlflow_oidc_auth/config.py`)
 - `asgiref` >=3.11.1 - ASGI utilities (`pyproject.toml`)
 - `gunicorn` <24 - WSGI server for non-Windows (`pyproject.toml`, platform conditional)
@@ -148,13 +149,13 @@
 ## Platform Requirements
 
 **Development:**
-- Python 3.12 (via `.python-version`)
+- Python 3.14 (via `.python-version`)
 - Node.js 24 (per CI config)
 - Yarn package manager
 - Optional: Docker Compose for Redis testing
 
 **Production:**
-- Python >=3.10 (>=3.12 recommended)
+- Python >=3.11 (>=3.14 recommended)
 - No Node.js required (frontend is pre-built into `mlflow_oidc_auth/ui/`)
 - ASGI server: uvicorn (bundled dependency)
 - Database: SQLite (default) or PostgreSQL/MySQL

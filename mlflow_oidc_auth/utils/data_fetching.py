@@ -13,17 +13,18 @@ Key Features:
 - Gateway endpoint fetching from MLflow's unified gateway
 """
 
+import inspect
 from typing import Any, Dict, List, Optional
 
 from mlflow.entities import Experiment
 from mlflow.entities.model_registry import RegisteredModel
 from mlflow.server.handlers import _get_model_registry_store, _get_tracking_store
 from mlflow.store.entities.paged_list import PagedList
+from mlflow.store.tracking.abstract_store import AbstractStore
+from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 
-from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.permissions import get_permission
-from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model
+from mlflow_oidc_auth.utils.permissions import can_read_experiment, effective_experiment_permission
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission, is_prompt_row
 
 
 def fetch_all_registered_models(
@@ -220,7 +221,8 @@ def fetch_readable_registered_models(
     all_models = fetch_all_registered_models(filter_string=filter_string, order_by=order_by, max_results_per_page=max_results_per_page)
 
     # Filter by permissions
-    readable_models = [model for model in all_models if can_read_registered_model(model.name, username)]
+    # A prompt is judged by prompt grants (#479); the model's tags say which it is.
+    readable_models = [model for model in all_models if effective_registry_permission(model.name, username, prompt=is_prompt_row(model)).permission.can_read]
 
     return readable_models
 
@@ -247,11 +249,6 @@ def fetch_readable_logged_models(
         List of LoggedModel objects that the user can read
     """
 
-    # Get user permissions
-    perms = store.list_experiment_permissions(username)
-    can_read_perms = {p.experiment_id: get_permission(p.permission).can_read for p in perms}
-    default_can_read = get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_read
-
     all_models = []
     page_token = None
     tracking_store = _get_tracking_store()
@@ -268,7 +265,7 @@ def fetch_readable_logged_models(
 
         # Filter models based on read permissions
         for model in result:
-            if can_read_perms.get(model.experiment_id, default_can_read):
+            if effective_experiment_permission(model.experiment_id, username).permission.can_read:
                 all_models.append(model)
 
         # Check if there are more pages
@@ -350,3 +347,83 @@ def fetch_all_gateway_model_definitions() -> List[Dict[str, Any]]:
             all_models.append(model)
 
     return all_models
+
+
+def fetch_all_mcp_servers() -> List[Dict[str, Any]]:
+    """Fetch every MCP server of the request's workspace from MLflow's MCP server registry.
+
+    The registry exists from MLflow 3.15; on an older MLflow there is nothing to list.
+
+    Returns:
+        One dictionary per server with ``name``, ``display_name``, ``description``, ``status``,
+        ``latest_version`` and ``workspace``.
+    """
+    store = _get_tracking_store()
+    if not hasattr(store, "search_mcp_servers"):
+        return []
+    servers: List[Dict[str, Any]] = []
+    page_token = None
+    while True:
+        page = store.search_mcp_servers(max_results=1000, page_token=page_token)
+        for server in page:
+            status = getattr(server, "status", None)
+            servers.append(
+                {
+                    "name": server.name,
+                    "display_name": getattr(server, "display_name", None),
+                    "description": getattr(server, "description", None),
+                    "status": str(status) if status is not None else None,
+                    "latest_version": getattr(server, "latest_version", None),
+                    "workspace": getattr(server, "workspace", None),
+                }
+            )
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            break
+    return servers
+
+
+def _has_run_row_lookup() -> bool:
+    """Whether MLflow's SQL store still has ``_get_run(session, run_uuid)``.
+
+    ``get_run`` is built on this private method. If an MLflow release changes it,
+    ``get_run_experiment_id`` falls back to ``get_run``: checks get slower, not broken.
+    """
+    lookup = getattr(SqlAlchemyStore, "_get_run", None)
+    return lookup is not None and {"session", "run_uuid"} <= set(inspect.signature(lookup).parameters)
+
+
+_RUN_ROW_LOOKUP = _has_run_row_lookup()
+
+
+def get_run_experiment_id(tracking_store: AbstractStore, run_id: str) -> str:
+    """
+    Return the id of the experiment a run belongs to, without loading the whole run.
+
+    A run inherits its permissions from its experiment, so a run-scoped check needs only
+    this id. ``get_run`` on MLflow's SQL store also loads every latest metric, param and
+    tag of the run, plus its inputs and outputs (7 statements on MLflow 3.14 to 3.16), and
+    builds an entity for every row. For a run with thousands of metric keys, each check
+    then costs as much as a ``runs/get``, even on a route that reads one metric key.
+
+    On MLflow's SQL store (workspace-aware or not) this reads the run's own row, with the
+    query that ``get_run`` itself runs, minus the eager loads. MLflow's own write paths
+    (``log_batch``, ``set_tag``) use the same query. The workspace scoping and the
+    ``RESOURCE_DOES_NOT_EXIST`` error are the same as ``get_run``. Every other store, a SQL
+    store subclass that overrides ``get_run``, and an MLflow release without that private
+    query (``_has_run_row_lookup``) go through ``get_run``.
+
+    Args:
+        tracking_store: The MLflow tracking store.
+        run_id: The run ID.
+
+    Returns:
+        The experiment ID, as a string, like ``Run.info.experiment_id``.
+
+    Raises:
+        MlflowException: When the run cannot be resolved, as ``get_run`` raises.
+    """
+    if _RUN_ROW_LOOKUP and getattr(type(tracking_store), "get_run", None) is SqlAlchemyStore.get_run:
+        with tracking_store.ManagedSessionMaker() as session:
+            return str(tracking_store._get_run(session=session, run_uuid=run_id).experiment_id)
+    return tracking_store.get_run(run_id).info.experiment_id

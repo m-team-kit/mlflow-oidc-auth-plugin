@@ -25,7 +25,6 @@ class CacheBackend(Protocol):
         Returns:
             The cached value, or None if the key is missing or expired.
         """
-        ...
 
     def set(self, key: str, value: Any) -> None:
         """Store a value under the given key.
@@ -33,15 +32,22 @@ class CacheBackend(Protocol):
         The value will expire according to the TTL configured at
         construction time.
         """
-        ...
 
     def delete(self, key: str) -> None:
         """Remove a single key from the cache.
 
         No-op if the key does not exist.
         """
-        ...
+
+    def delete_prefix(self, prefix: str) -> None:
+        """Remove every key in this namespace that starts with ``prefix``.
+
+        Enables targeted invalidation of a related group of entries (e.g. every
+        workspace entry for one user) without clearing the whole namespace, which
+        would throw away every other user's warm entries.
+
+        No-op if nothing matches.
+        """
 
     def clear(self) -> None:
         """Remove all entries from this cache namespace."""
-        ...

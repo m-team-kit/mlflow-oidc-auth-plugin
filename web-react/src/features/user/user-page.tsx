@@ -11,12 +11,16 @@ import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permi
 import { useUserGatewayEndpointPermissions } from "../../core/hooks/use-user-gateway-endpoint-permissions";
 import { useUserGatewaySecretPermissions } from "../../core/hooks/use-user-gateway-secret-permissions";
 import { useUserGatewayModelPermissions } from "../../core/hooks/use-user-gateway-model-permissions";
+import { useUserMcpServerPermissions } from "../../core/hooks/use-user-mcp-server-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
-import { TokenInfoBlock } from "../../shared/components/token-info-block";
+import { UserTokensPanel } from "../tokens/components/user-tokens-panel";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
+import { GrantWorkspaceNotice } from "../permissions/components/grant-workspace-notice";
+import { useGrantWorkspaceScope } from "../permissions/hooks/use-grant-workspace-scope";
+import type { PermissionType } from "../../shared/types/entity";
 
 export const UserPage = () => {
   const { tab = "info" } = useParams<{ tab?: string }>();
@@ -30,25 +34,31 @@ export const UserPage = () => {
   const endpointHook = useUserGatewayEndpointPermissions({ username });
   const secretHook = useUserGatewaySecretPermissions({ username });
   const modelGatewayHook = useUserGatewayModelPermissions({ username });
+  const mcpServerHook = useUserMcpServerPermissions({ username });
+  const grantScope = useGrantWorkspaceScope(tab as PermissionType);
 
   const activeHook =
     {
       info: null,
+      tokens: null,
       experiments: experimentHook,
       models: modelHook,
       prompts: promptHook,
       "ai-endpoints": endpointHook,
       "ai-secrets": secretHook,
       "ai-models": modelGatewayHook,
+      "mcp-servers": mcpServerHook,
     }[
       tab as
         | "info"
+        | "tokens"
         | "experiments"
         | "models"
         | "prompts"
         | "ai-endpoints"
         | "ai-secrets"
         | "ai-models"
+        | "mcp-servers"
     ] || null;
 
   const {
@@ -65,6 +75,7 @@ export const UserPage = () => {
 
   const tabs = [
     { id: "info", label: "Info" },
+    { id: "tokens", label: "Tokens" },
     { id: "experiments", label: "Experiments" },
     { id: "prompts", label: "Prompts" },
     { id: "models", label: "Models" },
@@ -75,6 +86,7 @@ export const UserPage = () => {
           { id: "ai-models", label: "AI\u00A0Models" },
         ]
       : []),
+    { id: "mcp-servers", label: "MCP\u00A0Servers" },
   ];
 
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
@@ -100,13 +112,6 @@ export const UserPage = () => {
 
   return (
     <PageContainer title="User Page">
-      {currentUser && (
-        <TokenInfoBlock
-          username={currentUser.username}
-          passwordExpiration={currentUser.password_expiration}
-        />
-      )}
-
       <div className="flex space-x-2 justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3 min-w-0">
         <div className="flex space-x-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
           {tabs.map((tabItem) => (
@@ -128,18 +133,20 @@ export const UserPage = () => {
       <PageStatus
         isLoading={
           isLoading &&
-          (!currentUser || (tab !== "info" && !activeHook?.permissions))
+          (!currentUser || (activeHook !== null && !activeHook.permissions))
         }
         loadingText="Loading information..."
         error={error}
-        onRetry={tab === "info" ? undefined : activeHook?.refresh}
+        onRetry={activeHook?.refresh}
       />
 
       {!isLoading && !error && currentUser && (
         <>
           {tab === "info" && <UserDetailsCard currentUser={currentUser} />}
-          {tab !== "info" && activeHook && (
+          {tab === "tokens" && <UserTokensPanel />}
+          {activeHook && (
             <>
+              <GrantWorkspaceNotice scope={grantScope} readOnly />
               <div className="mb-2">
                 <SearchInput
                   value={searchTerm}

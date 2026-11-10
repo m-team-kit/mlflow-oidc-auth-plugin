@@ -1,65 +1,120 @@
+import { createPagedFetcher } from "./paged-list";
 import {
-  createDynamicApiFetcher,
-  createStaticApiFetcher,
-} from "./create-api-fetcher";
-import { request } from "./api-utils";
-import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
-import type { CurrentUser, UserSummary, UserQuota } from "../../shared/types/user";
-
-export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
-  endpointKey: "GET_CURRENT_USER",
-  responseType: {} as CurrentUser,
-  headers: {
-    "Cache-Control": "no-store",
-  },
-});
-
-export const fetchAllUsers = createStaticApiFetcher<UserSummary[]>({
-  endpointKey: "USERS_RESOURCE",
-  responseType: [] as UserSummary[],
-});
-
-export const fetchAllServiceAccounts = createStaticApiFetcher<UserSummary[]>({
-  endpointKey: "USERS_RESOURCE",
-  responseType: [] as UserSummary[],
-  queryParams: {
-    service: true,
-  },
-});
-
-export const fetchUserDetails = createDynamicApiFetcher<
+  apiRequest,
+  type ApiRequestBody,
+  type ApiResponse,
+} from "./typed-http";
+import type {
   CurrentUser,
-  "GET_USER_DETAILS"
->({
-  endpointKey: "GET_USER_DETAILS",
-  responseType: {} as CurrentUser,
-});
+  UserDetails,
+  UserQuota,
+  UserSummary,
+} from "../../shared/types/user";
 
-export const fetchUserQuota = createDynamicApiFetcher<UserQuota, "GET_USER_QUOTA">({
-  endpointKey: "GET_USER_QUOTA",
-  responseType: {} as UserQuota,
-});
+const USERS = "/api/2.0/mlflow/users";
 
-export const fetchAllUserQuotas = createStaticApiFetcher<UserQuota[]>({
-  endpointKey: "USER_QUOTAS",
-  responseType: [] as UserQuota[],
-});
-
-export const createUser = async (data: {
-  username: string;
-  display_name: string;
-  is_admin: boolean;
-  is_service_account: boolean;
-}) => {
-  return request(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
-    method: "POST",
-    body: JSON.stringify(data),
+export const fetchCurrentUser = (signal?: AbortSignal): Promise<CurrentUser> =>
+  apiRequest("get", "/api/2.0/mlflow/users/current", {
+    signal,
+    headers: { "Cache-Control": "no-store" },
   });
-};
 
-export const deleteUser = async (username: string) => {
-  return request(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
-    method: "DELETE",
-    body: JSON.stringify({ username }),
+/** Every user with their display name. */
+export const fetchAllUsers = (signal?: AbortSignal): Promise<UserSummary[]> =>
+  apiRequest("get", USERS, { signal });
+
+/** Every service account with its display name. */
+export const fetchAllServiceAccounts = (
+  signal?: AbortSignal,
+): Promise<UserSummary[]> =>
+  apiRequest("get", USERS, { query: { service: true }, signal });
+
+/**
+ * Paginated users for the Users list page. The server's `search` matches the
+ * username or the display name.
+ */
+export const fetchUsersPage = createPagedFetcher<
+  ApiResponse<typeof USERS, "get">,
+  UserSummary
+>(USERS, {
+  extract: (body) => body ?? [],
+  displayKey: (user) => user.username,
+});
+
+/** Paginated service accounts for the Service Accounts list page. */
+export const fetchServiceAccountsPage = createPagedFetcher<
+  ApiResponse<typeof USERS, "get">,
+  UserSummary
+>(USERS, {
+  extract: (body) => body ?? [],
+  displayKey: (user) => user.username,
+  queryParams: { service: true },
+});
+
+/** One user's profile, display name included (admin-only). */
+export const fetchUserProfile = (
+  username: string,
+  signal?: AbortSignal,
+): Promise<CurrentUser> =>
+  apiRequest("get", "/api/2.0/mlflow/users/{username}", {
+    path: { username },
+    signal,
   });
-};
+
+/** One user's data quota (admin, or the user themselves). */
+export const fetchUserQuota = (
+  username: string,
+  signal?: AbortSignal,
+): Promise<UserQuota> =>
+  apiRequest("get", "/oidc/quota/users/{username}", {
+    path: { username },
+    signal,
+  });
+
+/** Every user's data quota (admin-only). */
+export const fetchAllUserQuotas = (
+  signal?: AbortSignal,
+): Promise<UserQuota[]> => apiRequest("get", "/oidc/quota/users", { signal });
+
+/**
+ * Create a user or service account (admin-only). For a service account,
+ * `service_account_source` is "internal" (default) or the id of the provider it
+ * signs in through, and `subject` binds an external one to a provider subject now.
+ */
+export const createUser = async (data: ApiRequestBody<typeof USERS, "post">) =>
+  apiRequest("post", USERS, { body: data });
+
+export const deleteUser = async (username: string) =>
+  apiRequest("delete", USERS, { body: { username } });
+
+/**
+ * List users with their lifecycle state (admin-only).
+ *
+ * Returns a fetcher compatible with `useApi`. `service` mirrors the
+ * `?service=` query param: omitted returns both users and service accounts,
+ * `false` returns users only, `true` returns service accounts only.
+ */
+export function fetchAllUserDetails(service?: boolean) {
+  return (signal?: AbortSignal): Promise<UserDetails[]> =>
+    apiRequest("get", "/api/2.0/mlflow/users/details", {
+      query: service === undefined ? {} : { service },
+      signal,
+    });
+}
+
+/**
+ * Activate or deactivate a user (admin-only).
+ *
+ * @param adminOverride - Break-glass write to a directory-owned account
+ * (`managed_by` is `"scim"` or `"oidc:<provider_id>"`). Always audited
+ * server-side.
+ */
+export const setUserActive = async (
+  username: string,
+  active: boolean,
+  adminOverride: boolean = false,
+): Promise<UserDetails> =>
+  apiRequest("patch", "/api/2.0/mlflow/users/{username}/active", {
+    path: { username },
+    body: { active, admin_override: adminOverride },
+  });

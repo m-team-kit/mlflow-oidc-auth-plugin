@@ -132,8 +132,7 @@ def enforce_quota(username: str) -> None:
 
     if used >= limit:
         raise MlflowException(
-            f"Storage quota exceeded for user '{username}'. "
-            f"Used {used} bytes of {limit} bytes.",
+            f"Storage quota exceeded for user '{username}'. " f"Used {used} bytes of {limit} bytes.",
             RESOURCE_LIMIT_EXCEEDED,
         )
 
@@ -302,9 +301,7 @@ def _calculate_used_bytes(username: str) -> tuple:
                         try:
                             total += _sum_artifacts(mv.source, "")
                         except Exception as e:
-                            logger.warning(
-                                f"Could not sum artifacts for model {model_name} version {mv.version}: {e}"
-                            )
+                            logger.warning(f"Could not sum artifacts for model {model_name} version {mv.version}: {e}")
 
     if remaining_experiments:
         logger.warning(
@@ -393,8 +390,10 @@ def cleanup_trash(retention_days: int) -> None:
     for workspace_name in _iter_workspace_names():
         with _workspace_context(workspace_name):
             try:
-                deleted_experiments = client.search_experiments(
-                    view_type=mlflow.entities.ViewType.DELETED_ONLY,
+                from mlflow_oidc_auth.utils.trash_cleanup import fetch_all_pages
+
+                deleted_experiments = fetch_all_pages(
+                    lambda token: client.search_experiments(view_type=mlflow.entities.ViewType.DELETED_ONLY, page_token=token)
                 )
             except Exception as e:
                 logger.error(f"Error listing deleted experiments in workspace {workspace_name!r}: {e}")
@@ -406,14 +405,17 @@ def cleanup_trash(retention_days: int) -> None:
                     continue
 
                 owner = get_experiment_owner(exp.experiment_id)
+                # Runs may be deleted even when the experiment is kept, so usage can change either way.
+                if owner:
+                    affected_owners.add(owner)
                 try:
                     from mlflow.server.handlers import _get_tracking_store
                     from mlflow_oidc_auth.utils.trash_cleanup import hard_delete_experiment_with_runs
 
-                    hard_delete_experiment_with_runs(exp.experiment_id, _get_tracking_store())
-                    logger.info(f"Permanently deleted experiment {exp.experiment_id} (owner: {owner}, workspace: {workspace_name})")
-                    if owner:
-                        affected_owners.add(owner)
+                    if hard_delete_experiment_with_runs(exp.experiment_id, _get_tracking_store()):
+                        logger.info(f"Permanently deleted experiment {exp.experiment_id} (owner: {owner}, workspace: {workspace_name})")
+                    else:
+                        logger.warning(f"Kept experiment {exp.experiment_id} (owner: {owner}, workspace: {workspace_name}); the next sweep retries")
                 except Exception as e:
                     logger.error(f"Could not hard-delete experiment {exp.experiment_id} in workspace {workspace_name!r}: {e}")
 

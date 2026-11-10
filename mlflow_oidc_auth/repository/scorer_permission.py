@@ -5,8 +5,6 @@ simple inheritance from BaseUserPermissionRepository.  We inherit for the
 constructor and session wiring but override every data method.
 """
 
-from typing import Callable, List
-
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
     INVALID_STATE,
@@ -16,6 +14,7 @@ from mlflow.protos.databricks_pb2 import (
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlScorerPermission, SqlUser
 from mlflow_oidc_auth.entities import ScorerPermission
 from mlflow_oidc_auth.permissions import _validate_permission
@@ -24,7 +23,7 @@ from mlflow_oidc_auth.repository.utils import get_user
 
 
 class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermission, ScorerPermission]):
-    model_class = SqlScorerPermission
+    grant_kind = permission_kinds.SCORER
     resource_id_attr = "experiment_id"
 
     # -- 2-part key overrides ------------------------------------------------
@@ -54,7 +53,7 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
 
     def grant_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 user = get_user(session, username)
                 perm = SqlScorerPermission(
@@ -68,7 +67,7 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Scorer permission already exists ({experiment_id}, {scorer_name}, {username}): {e}",
+                    f"Scorer permission already exists ({experiment_id}, {scorer_name}, {username})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
@@ -79,14 +78,14 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
 
     def update_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             perm.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
 
     def revoke_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             session.delete(perm)
             session.flush()

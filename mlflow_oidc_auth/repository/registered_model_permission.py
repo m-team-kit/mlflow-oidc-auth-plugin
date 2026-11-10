@@ -5,13 +5,14 @@ from typing import List
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission
 from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 
 
 class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegisteredModelPermission, RegisteredModelPermission]):
-    model_class = SqlRegisteredModelPermission
+    grant_kind = permission_kinds.REGISTERED_MODEL
     resource_id_attr = "name"
 
     # --- Aliases preserving backward-compatible method names -----------------
@@ -34,8 +35,8 @@ class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegist
     # --- Custom rename: raises when nothing is found -------------------------
 
     def rename(self, old_name: str, new_name: str) -> None:
-        with self._Session() as session:
-            perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
+        with self._Session(read_only=False) as session:
+            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
             if not perms:
                 raise MlflowException(
                     f"No registered model permissions found for name: {old_name}",

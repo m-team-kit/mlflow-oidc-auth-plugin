@@ -1,3 +1,4 @@
+from typing import Iterable
 from dataclasses import dataclass
 
 from mlflow import MlflowException
@@ -100,3 +101,83 @@ def compare_permissions(permission1: str, permission2: str) -> bool:
     _validate_permission(permission1)
     _validate_permission(permission2)
     return ALL_PERMISSIONS[permission1].priority <= ALL_PERMISSIONS[permission2].priority
+
+
+_CAPABILITIES = ("can_read", "can_use", "can_update", "can_delete", "can_manage")
+
+
+def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
+    """The capabilities held on EVERY one of ``permissions``, as a real permission level.
+
+    Used when a request names more than one resource for a single field — the same id
+    spelled in two request sources with different values (issues #285, #288). The
+    caller may do only what it may do on all of them. An empty input yields
+    ``NO_PERMISSIONS``: resolving nothing must never mean allow.
+
+    The result is always one of ``ALL_PERMISSIONS``, so its ``name`` is a valid key for
+    ``get_permission`` / ``compare_permissions`` and its ``priority`` is that level's
+    own. It is the most capable level whose flags are all contained in the logical AND
+    of the inputs' flags. The built-in levels are totally ordered by their flags, so for
+    them this is exactly the weakest input; anything else rounds DOWN, never up.
+
+    ``priority`` is deliberately not used to pick the weakest: it is a resolution
+    order, not a capability order (``NO_PERMISSIONS`` has the highest priority and no
+    capabilities), so neither ``min`` nor ``max`` of it yields the weakest member.
+
+    Parameters:
+        permissions: The permissions resolved for each referenced resource.
+
+    Returns:
+        The single input when there is one, otherwise the ``ALL_PERMISSIONS`` level
+        described above.
+    """
+    resolved = list(permissions)
+    if not resolved:
+        return NO_PERMISSIONS
+    if len(resolved) == 1:
+        return resolved[0]
+    held = {flag: all(getattr(p, flag) for p in resolved) for flag in _CAPABILITIES}
+    contained = [level for level in ALL_PERMISSIONS.values() if all(held[flag] or not getattr(level, flag) for flag in _CAPABILITIES)]
+    # NO_PERMISSIONS has no flags, so it is always contained and the list is never empty.
+    return max(contained, key=lambda level: sum(getattr(level, flag) for flag in _CAPABILITIES))
+
+
+def regex_grant_order(rule) -> tuple:
+    """The order regex (pattern) grants are tried in: priority, then id.
+
+    The single definition of that order. Lower priority numbers first, then lower id. Which of
+    several equal-priority matches decides is a separate rule (permission rank, in the matchers);
+    the id only makes the order, and so which equally ranked match is reported, deterministic.
+    It works on a grant entity or row, where it is a sort key, and
+    on a regex permission model class, where it gives the columns to order by:
+    ``query.order_by(*regex_grant_order(SqlExperimentRegexPermission))``.
+
+    Parameters:
+        rule: A regex grant (entity or ORM row), or a regex permission model class.
+
+    Returns:
+        ``(priority, id)``.
+    """
+    return (rule.priority, rule.id)
+
+
+def in_regex_grant_order(rules: list) -> list:
+    """``rules`` in :func:`regex_grant_order`, sorting only when they are not already in it.
+
+    Repositories return grants already ordered, so the usual cost is one linear check rather
+    than a sort. Anything that is not in order (a query missing the tie-break, a hand-built
+    list) is sorted, so a matcher's result never depends on the order a caller passed.
+
+    Parameters:
+        rules: Regex grants with ``priority`` and ``id``.
+
+    Returns:
+        ``rules`` itself when already ordered, otherwise a sorted copy.
+    """
+    previous = None
+    for rule in rules:
+        key = regex_grant_order(rule)
+        if previous is not None and key < previous:
+            return sorted(rules, key=regex_grant_order)
+        previous = key
+    return rules

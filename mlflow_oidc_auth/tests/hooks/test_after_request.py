@@ -23,6 +23,7 @@ from mlflow_oidc_auth.hooks.after_request import (
     _delete_gateway_secret_permissions_cascade,
     _delete_gateway_model_definition_permissions_cascade,
     _rename_gateway_endpoint_permission,
+    _rename_gateway_model_definition_permission,
 )
 
 app = Flask(__name__)
@@ -34,6 +35,12 @@ class _FakePagedList(list):
     def __init__(self, items, token=None):
         super().__init__(items)
         self.token = token
+
+    # Compares as the list it wraps; ``token`` is pagination metadata, as in MLflow's PagedList.
+    def __eq__(self, other):
+        return list.__eq__(self, other)
+
+    __hash__ = None
 
 
 @pytest.fixture
@@ -218,7 +225,7 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
                 False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -247,7 +254,8 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_experiments(mock_response)
 
-                mock_can_read.assert_called_once_with("123", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "123")
                 assert len(mock_response_message.experiments) == 1
 
 
@@ -275,7 +283,7 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
             exp_entities.append(e)
 
         tracking_store = MagicMock()
-        tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token=None)
+        tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token="more")
 
         with (
             patch(
@@ -283,7 +291,7 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -348,7 +356,7 @@ def test_filter_search_experiments_no_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -419,7 +427,7 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -444,7 +452,8 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_registered_models(mock_response)
 
-                mock_can_read.assert_called_once_with("test_model", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "test_model")
                 assert len(mock_response_message.registered_models) == 1
 
 
@@ -471,7 +480,7 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
             rm_entities.append(rm)
 
         model_registry_store = MagicMock()
-        model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token=None)
+        model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token="more")
 
         with (
             patch(
@@ -479,7 +488,7 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -527,8 +536,8 @@ def test_rename_registered_model_permission(mock_response, mock_store):
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_called_once_with("old_model", "new_model")
-        mock_store.rename_group_model_permissions.assert_called_once_with("old_model", "new_model")
+        # User and group grants move in one call, which also clears grants left on the new name (#479).
+        mock_store.move_registered_model_permissions.assert_called_once_with("old_model", "new_model")
 
 
 def test_rename_registered_model_permission_missing_name(mock_response, mock_store):
@@ -540,8 +549,7 @@ def test_rename_registered_model_permission_missing_name(mock_response, mock_sto
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_missing_new_name(mock_response, mock_store):
@@ -553,8 +561,7 @@ def test_rename_registered_model_permission_missing_new_name(mock_response, mock
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_no_json(mock_response, mock_store):
@@ -565,8 +572,7 @@ def test_rename_registered_model_permission_no_json(mock_response, mock_store):
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_filter_search_logged_models_admin(mock_response, mock_bridge):
@@ -615,7 +621,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
         headers={"Content-Type": "application/json"},
     ):
 
-        def fake_can_read(exp_id: str, _user: str) -> bool:
+        def fake_can_read(_ctx, exp_id: str) -> bool:
             return exp_id == "123"
 
         with (
@@ -624,7 +630,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 side_effect=fake_can_read,
             ),
             patch(
@@ -662,7 +668,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
 
 def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge):
     """Test _filter_search_logged_models with pagination needed"""
-    mock_response.json = {"models": []}
+    mock_response.json = {"models": [], "next_page_token": "token123"}
 
     # Mock request message with small max_results
     mock_request_message = MagicMock()
@@ -696,7 +702,7 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -734,7 +740,7 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
 
 def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_bridge):
     """Test _filter_search_logged_models when no pagination is needed"""
-    mock_response.json = {"models": []}
+    mock_response.json = {"models": [{"info": {"experiment_id": "exp_1"}}], "next_page_token": "token123"}
 
     # Mock request message
     mock_request_message = MagicMock()
@@ -758,7 +764,7 @@ def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_br
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -866,8 +872,7 @@ def test_rename_registered_model_permission_invalid_json(mock_response, mock_sto
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_set_can_manage_gateway_endpoint_permission(mock_response, mock_store, mock_bridge):
@@ -890,7 +895,7 @@ def test_set_can_manage_gateway_endpoint_permission(mock_response, mock_store, m
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_endpoint_permission(mock_response)
-            mock_store.create_gateway_endpoint_permission.assert_called_once_with("my-endpoint", "test_user", "MANAGE")
+            mock_store.grant_creator_gateway_endpoint_permission.assert_called_once_with("my-endpoint", "test_user")
 
 
 def test_set_can_manage_gateway_secret_permission(mock_response, mock_store, mock_bridge):
@@ -913,7 +918,7 @@ def test_set_can_manage_gateway_secret_permission(mock_response, mock_store, moc
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_secret_permission(mock_response)
-            mock_store.create_gateway_secret_permission.assert_called_once_with("my-secret", "test_user", "MANAGE")
+            mock_store.grant_creator_gateway_secret_permission.assert_called_once_with("my-secret", "test_user")
 
 
 def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_store, mock_bridge):
@@ -936,7 +941,7 @@ def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_model_definition_permission(mock_response)
-            mock_store.create_gateway_model_definition_permission.assert_called_once_with("us-east-1/claude-3", "test_user", "MANAGE")
+            mock_store.grant_creator_gateway_model_definition_permission.assert_called_once_with("us-east-1/claude-3", "test_user")
 
 
 def test_get_after_request_handler_gateway_endpoints():
@@ -946,12 +951,14 @@ def test_get_after_request_handler_gateway_endpoints():
         CreateGatewaySecret,
         CreateGatewayModelDefinition,
         UpdateGatewayEndpoint,
+        UpdateGatewayModelDefinition,
     )
 
     assert _get_after_request_handler(CreateGatewayEndpoint) == _set_can_manage_gateway_endpoint_permission
     assert _get_after_request_handler(CreateGatewaySecret) == _set_can_manage_gateway_secret_permission
     assert _get_after_request_handler(CreateGatewayModelDefinition) == _set_can_manage_gateway_model_definition_permission
     assert _get_after_request_handler(UpdateGatewayEndpoint) == _rename_gateway_endpoint_permission
+    assert _get_after_request_handler(UpdateGatewayModelDefinition) == _rename_gateway_model_definition_permission
 
 
 def test_get_after_request_handler_gateway_list():
@@ -991,7 +998,7 @@ def test_filter_list_gateway_endpoints_non_admin(mock_response, mock_bridge):
     """Test that non-admin users only see endpoints they can read."""
     mock_response.json = {"endpoints": [{"name": "ep1"}, {"name": "ep2"}, {"name": "ep3"}]}
 
-    def can_read_side_effect(name, user):
+    def can_read_side_effect(_ctx, name):
         return name in ("ep1", "ep3")
 
     with (
@@ -1021,7 +1028,7 @@ def test_filter_list_gateway_endpoints_non_admin(mock_response, mock_bridge):
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_endpoint",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_endpoint",
                 side_effect=can_read_side_effect,
             ),
         ):
@@ -1061,7 +1068,7 @@ def test_filter_list_gateway_secrets_non_admin(mock_response, mock_bridge):
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_secret",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_secret",
                 return_value=False,
             ),
         ):
@@ -1099,8 +1106,8 @@ def test_filter_list_gateway_model_definitions_non_admin(mock_response, mock_bri
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_model_definition",
-                side_effect=lambda name, user: name == "md2",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_model_definition",
+                side_effect=lambda _ctx, name: name == "md2",
             ),
         ):
             _filter_list_gateway_model_definitions(mock_response)
@@ -1191,7 +1198,7 @@ def test_rename_gateway_endpoint_permission(mock_response, mock_store):
 
         g._updating_gateway_endpoint_old_name = "old-endpoint-name"
         _rename_gateway_endpoint_permission(mock_response)
-        mock_store.rename_gateway_endpoint_permissions.assert_called_once_with("old-endpoint-name", "new-endpoint-name")
+        mock_store.rename_gateway_endpoint_permissions.assert_called_once_with("old-endpoint-name", "new-endpoint-name", None)
 
 
 def test_rename_gateway_endpoint_permission_same_name(mock_response, mock_store):
@@ -1225,6 +1232,91 @@ def test_rename_gateway_endpoint_permission_no_old_name(mock_response, mock_stor
     ):
         _rename_gateway_endpoint_permission(mock_response)
         mock_store.rename_gateway_endpoint_permissions.assert_not_called()
+
+
+def test_rename_gateway_model_definition_permission(mock_response, mock_store):
+    """Model definition grants follow a rename."""
+    mock_response_message = MagicMock()
+    mock_response_message.model_definition.name = "new-model-def"
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/update",
+            method="POST",
+        ),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.UpdateGatewayModelDefinition.Response",
+            return_value=mock_response_message,
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        from flask import g
+
+        g._updating_gateway_model_definition_old_name = "old-model-def"
+        g._updating_gateway_model_definition_permission_ids = [[1], [2]]
+        _rename_gateway_model_definition_permission(mock_response)
+        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def", [[1], [2]])
+
+
+def test_rename_gateway_model_definition_permission_same_name(mock_response, mock_store):
+    """No rename when the model definition name hasn't changed."""
+    mock_response_message = MagicMock()
+    mock_response_message.model_definition.name = "same-name"
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/update",
+            method="POST",
+        ),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.UpdateGatewayModelDefinition.Response",
+            return_value=mock_response_message,
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        from flask import g
+
+        g._updating_gateway_model_definition_old_name = "same-name"
+        _rename_gateway_model_definition_permission(mock_response)
+        mock_store.rename_gateway_model_definition_permissions.assert_not_called()
+
+
+def test_rename_gateway_model_definition_permission_no_old_name(mock_response, mock_store):
+    """No rename when no old name was stashed."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/model-definitions/update",
+        method="POST",
+    ):
+        _rename_gateway_model_definition_permission(mock_response)
+        mock_store.rename_gateway_model_definition_permissions.assert_not_called()
+
+
+def _model_definition_update_path():
+    from mlflow_oidc_auth.hooks.after_request import AFTER_REQUEST_HANDLERS
+
+    return next(path for (path, method), handler in AFTER_REQUEST_HANDLERS.items() if handler is _rename_gateway_model_definition_permission)
+
+
+def test_successful_model_definition_update_moves_grants(mock_store):
+    """Control for the failure case below: a 200 through the real hook dispatch renames."""
+    response = Response(response='{"model_definition": {"name": "new-model-def"}}', status=200, mimetype="application/json")
+    with app.test_request_context(path=_model_definition_update_path(), method="POST"):
+        from flask import g
+
+        g._updating_gateway_model_definition_old_name = "old-model-def"
+        after_request_hook(response)
+        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def", None)
+
+
+def test_failed_model_definition_update_keeps_grants(mock_store):
+    """An update MLflow rejected must not move any grant."""
+    response = Response(response='{"error_code": "RESOURCE_ALREADY_EXISTS"}', status=400, mimetype="application/json")
+    with app.test_request_context(path=_model_definition_update_path(), method="POST"):
+        from flask import g
+
+        g._updating_gateway_model_definition_old_name = "old-model-def"
+        after_request_hook(response)
+        mock_store.rename_gateway_model_definition_permissions.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1277,7 +1369,7 @@ def test_filter_search_model_versions_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -1302,7 +1394,8 @@ def test_filter_search_model_versions_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_model_versions(mock_response)
 
-                mock_can_read.assert_called_once_with("model1", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "model1")
                 assert len(mock_response_message.model_versions) == 1
 
 
@@ -1320,7 +1413,7 @@ def test_filter_search_model_versions_filters_unreadable(mock_response, mock_bri
     mock_request_message.order_by = []
     mock_request_message.max_results = 1000
 
-    def fake_can_read(name: str, _user: str) -> bool:
+    def fake_can_read(_ctx, name: str) -> bool:
         return name == "allowed_model"
 
     with app.test_request_context(
@@ -1334,7 +1427,7 @@ def test_filter_search_model_versions_filters_unreadable(mock_response, mock_bri
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 side_effect=fake_can_read,
             ),
             patch(
@@ -1387,7 +1480,7 @@ def test_filter_search_model_versions_with_pagination(mock_response, mock_bridge
             mv_entities.append(mv)
 
         model_registry_store = MagicMock()
-        model_registry_store.search_model_versions.return_value = _FakePagedList(mv_entities, token=None)
+        model_registry_store.search_model_versions.return_value = _FakePagedList(mv_entities, token="more")
 
         with (
             patch(
@@ -1395,7 +1488,7 @@ def test_filter_search_model_versions_with_pagination(mock_response, mock_bridge
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -1454,7 +1547,7 @@ def test_filter_search_model_versions_no_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -1479,3 +1572,172 @@ def test_filter_search_model_versions_no_pagination(mock_response, mock_bridge):
             ):
                 _filter_search_model_versions(mock_response)
                 assert mock_response_message.next_page_token == ""
+
+
+def _logged_models_body(experiment_ids, next_page_token=None):
+    """A response body shaped like the one the tracking server actually returns."""
+    body = {
+        "models": [
+            {
+                "info": {"experiment_id": exp_id, "model_id": f"m{i}", "name": f"model-{i}"},
+                "data": {"metrics": [{"key": "accuracy", "value": 1.0, "timestamp": 1, "step": 0}]},
+            }
+            for i, exp_id in enumerate(experiment_ids)
+        ]
+    }
+    if next_page_token is not None:
+        body["next_page_token"] = next_page_token
+    return body
+
+
+def _run_filter_logged_models(mock_response, *, can_read, workspaces_enabled=False, can_access_workspace=True):
+    """Run the filter and report whether it rewrote the body via the protobuf path."""
+    tracking_store = MagicMock()
+    tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
+    tracking_store.get_experiment.return_value = MagicMock(workspace="ws")
+
+    request_message = MagicMock()
+    request_message.experiment_ids = ["123"]
+    request_message.filter = None
+    request_message.order_by = []
+    request_message.max_results = 1000
+
+    with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_username", return_value="test_user"),
+            patch("mlflow_oidc_auth.hooks.after_request._can_read_experiment", side_effect=can_read),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=request_message),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
+            patch("mlflow_oidc_auth.hooks.after_request._can_access_workspace", return_value=can_access_workspace),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict") as parse_dict_mock,
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}') as message_to_json_mock,
+            patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config,
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = workspaces_enabled
+            _filter_search_logged_models(mock_response)
+
+    return parse_dict_mock.called or message_to_json_mock.called
+
+
+def test_filter_search_logged_models_passes_through_when_all_visible(mock_response):
+    """A page the user may see in full is returned untouched.
+
+    Re-encoding it costs more than the tracking server spent producing it, and a page
+    of logged models carries every metric value of every model on it.
+    """
+    mock_response.json = _logged_models_body(["123", "123"])
+    original_data = mock_response.data
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
+
+    assert rewrote is False
+    assert mock_response.data == original_data
+
+
+def test_filter_search_logged_models_rewrites_when_a_model_is_unreadable(mock_response):
+    """The shortcut must never hide the fact that something has to be removed."""
+    mock_response.json = _logged_models_body(["123", "456"])
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: exp_id == "123")
+
+    assert rewrote is True
+
+
+def test_filter_search_logged_models_rewrites_when_a_further_page_exists(mock_response):
+    """A next page token means the filter may still need to top this page up."""
+    mock_response.json = _logged_models_body(["123"], next_page_token="tok")
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
+
+    assert rewrote is True
+
+
+def test_filter_search_logged_models_rewrites_when_workspace_denies(mock_response):
+    """Workspace denial (WSSEC-03) must also defeat the shortcut."""
+    mock_response.json = _logged_models_body(["123"])
+
+    rewrote = _run_filter_logged_models(
+        mock_response,
+        can_read=lambda _ctx, exp_id: True,
+        workspaces_enabled=True,
+        can_access_workspace=False,
+    )
+
+    assert rewrote is True
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"models": [{"name": "no info key"}]},
+        {"models": [{"info": {"name": "no experiment_id"}}]},
+        {"models": [{"info": {"experiment_id": 123}}]},
+        {"models": "not a list"},
+        [],
+    ],
+    ids=["no-info", "no-experiment-id", "non-string-id", "models-not-a-list", "body-not-a-dict"],
+)
+def test_filter_search_logged_models_rewrites_on_unexpected_body(mock_response, body):
+    """Anything the shortcut cannot positively verify falls back to full filtering."""
+    mock_response.json = body
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
+
+    assert rewrote is True
+
+
+# ---------------------------------------------------------------------------
+# Re-paging correctness (issue #456): page a filtered search to the end.
+# ---------------------------------------------------------------------------
+
+_REPAGING_VISIBILITY = {
+    "every_10th": lambda i: i % 10 == 0,
+    "every_3rd": lambda i: i % 3 == 1,
+    "tail_only": lambda i: i >= 230,
+    "head_only": lambda i: i < 7,
+    "all": lambda i: True,
+    "none": lambda i: False,
+    "pseudo_random": lambda i: (i * 2654435761) % 7 in (0, 3),
+}
+
+
+@pytest.mark.parametrize("kind", ["experiments", "registered_models", "model_versions"])
+@pytest.mark.parametrize("max_results", [1, 7, 25, 100])
+@pytest.mark.parametrize("visibility", sorted(_REPAGING_VISIBILITY))
+def test_repaging_no_row_skipped_or_duplicated(kind, max_results, visibility):
+    """Paging a filtered result to the end yields exactly the readable set, each row once.
+
+    A re-paging bug may drop or duplicate rows; it must never add an unreadable one.
+    """
+    from mlflow_oidc_auth.tests.search_paging_helpers import (
+        FakeSearchStore,
+        make_experiments,
+        make_model_versions,
+        make_registered_models,
+        row_id,
+        run_filtered_page,
+    )
+
+    rows = {"experiments": make_experiments, "registered_models": make_registered_models, "model_versions": make_model_versions}[kind](250)
+    is_visible = _REPAGING_VISIBILITY[visibility]
+    readable = {row_id(kind, r) for i, r in enumerate(rows) if is_visible(i)}
+    store = FakeSearchStore(rows)
+
+    seen: list = []
+    token = None
+    for _ in range(len(rows) + 2):  # bounded: every request consumes at least one row
+        ids, token = run_filtered_page(kind, store, lambda rid: rid in readable, max_results=max_results, page_token=token)
+        assert len(ids) <= max_results
+        assert set(ids) <= readable, "an unreadable row was returned"
+        seen.extend(ids)
+        if not token:
+            break
+    else:
+        pytest.fail("paging did not terminate")
+
+    assert len(seen) == len(set(seen)), "a row was returned twice"
+    assert set(seen) == readable, "a readable row was skipped"
+    # Pages concatenate to the store's order.
+    order = [row_id(kind, r) for r in rows]
+    assert seen == [rid for rid in order if rid in readable]

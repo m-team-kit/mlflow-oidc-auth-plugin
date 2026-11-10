@@ -2,9 +2,19 @@
 
 ## Requirements
 
-- Python >=3.10 (3.12 recommended)
-- MLflow >=3.10.0, <4
+- Python >=3.11 (3.14 recommended)
+- MLflow >=3.16.0, <4
 - An OIDC-compatible identity provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.)
+
+> **MLflow 3.16 is now the floor.** The MCP server registry permissions need MLflow 3.15+ and the
+> assistant routes 3.16; a deployment on MLflow 3.14 or 3.15 upgrades MLflow along with the plugin.
+
+> **Upgrading from an MLflow 3.10–3.13 deployment:** MLflow 3.14 puts the filesystem
+> tracking and model registry backends (the default `./mlruns` directory) into maintenance
+> mode and refuses to start against them. Migrate to a database backend before upgrading —
+> `mlflow migrate-filestore` moves existing data losslessly — or set
+> `MLFLOW_ALLOW_FILE_STORE=true` to opt out of the check. This affects MLflow's own storage,
+> not the plugin's `OIDC_USERS_DB_URI` auth database.
 
 ## Package Installation
 
@@ -18,7 +28,7 @@ Includes the complete MLflow package with the UI:
 pip install "mlflow-oidc-auth"
 ```
 
-Since `mlflow>=3.10.0` is a dependency, the full MLflow package (including the tracking UI) is installed automatically.
+Since `mlflow>=3.16.0` is a dependency, the full MLflow package (including the tracking UI) is installed automatically.
 
 ### With Cloud Provider Support
 
@@ -43,6 +53,17 @@ pip install "mlflow-oidc-auth[cloud]"
 
 See [Configuration Providers](configuration-providers) for details on each provider.
 
+### With SAML 2.0 Support
+
+```bash
+pip install "mlflow-oidc-auth[saml]"
+```
+
+Adds python3-saml and python-xmlsec, which ship binary wheels for Linux, macOS and Windows, so no
+compiler or `libxmlsec1` headers are needed. Only required to configure a `type: saml` provider;
+without it the plugin runs unchanged and any SAML provider is skipped with a logged reason. See
+[SAML Authentication](saml-auth).
+
 ## OIDC Provider Setup
 
 Before starting the server, register a client application with your OIDC provider.
@@ -53,7 +74,7 @@ Before starting the server, register a client application with your OIDC provide
 2. **Grant type**: Authorization Code
 3. **Redirect URI**: `https://your-mlflow-host/callback`
 4. **Scopes**: `openid`, `email`, `profile`
-5. **Token claims**: The ID token must include `email` (or `preferred_username`) and `groups`
+5. **Token claims**: The ID token must include `email` (or `preferred_username`) and `groups`. The claim(s) used for the login identity are configurable via `OIDC_USERNAME_FIELD` — see [Configuration Reference](configuration#oidc-authentication)
 
 ### Provider-Specific Notes
 
@@ -121,6 +142,11 @@ export OIDC_USERS_DB_URI="postgresql://user:pass@host:5432/mlflow_auth"
 mlflow-oidc-server --host 0.0.0.0 --port 8080
 ```
 
+A bare `postgresql://` URL uses SQLAlchemy's default driver, which is `psycopg` (version 3) on
+SQLAlchemy 2.1 and later. The plugin does not install a PostgreSQL driver, so install one yourself:
+`pip install "psycopg[binary]"`. To keep using psycopg2, install it and name it in the URL:
+`postgresql+psycopg2://user:pass@host:5432/mlflow`.
+
 The plugin uses two databases:
 - **MLflow tracking database** (`MLFLOW_BACKEND_STORE_URI`) — Managed by MLflow for experiments, runs, models
 - **Auth database** (`OIDC_USERS_DB_URI`) — Managed by the plugin for users, groups, permissions
@@ -159,7 +185,7 @@ curl http://localhost:8080/auth/status
 ### Basic Docker
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN pip install mlflow-oidc-auth
 
@@ -175,7 +201,7 @@ See [Configuration Providers](configuration-providers#kubernetes-deployment) for
 Key considerations:
 - All replicas **must** share the same `SECRET_KEY` for session cookie validation
 - Use `OIDC_USERS_DB_URI` pointing to a shared database (not SQLite)
-- Configure `TRUSTED_PROXIES` with your load balancer's CIDR range(s) to validate proxy headers
+- Configure `TRUSTED_PROXIES` with your load balancer's CIDR range(s): forwarded headers are ignored until it is set
 - For multi-replica deployments, use `CACHE_BACKEND=redis` with a shared Redis-compatible instance (Redis, Valkey, Dragonfly, KeyDB) so permission changes propagate immediately across replicas (install with `pip install "mlflow-oidc-auth[cache]"`)
 - Set `OIDC_AUDIENCE` to your client ID to validate JWT audience claims
 - Health probes: `/health/live` (liveness), `/health/ready` (readiness), `/health/startup` (startup)

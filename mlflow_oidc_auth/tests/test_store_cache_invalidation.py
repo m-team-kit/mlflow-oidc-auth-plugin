@@ -47,6 +47,12 @@ def mock_store():
     store.gateway_model_definition_group_repo = MagicMock()
     store.gateway_model_definition_regex_repo = MagicMock()
     store.gateway_model_definition_group_regex_repo = MagicMock()
+    store.mcp_server_repo = MagicMock()
+    store.mcp_server_group_repo = MagicMock()
+    store.workspace_permission_repo = MagicMock()
+    store.workspace_group_permission_repo = MagicMock()
+    store.workspace_regex_permission_repo = MagicMock()
+    store.workspace_group_regex_permission_repo = MagicMock()
     store.ManagedSessionMaker = MagicMock()
     return store
 
@@ -59,10 +65,24 @@ class TestPermissionCUDMethodsList:
         for method_name in _PERMISSION_CUD_METHODS:
             assert hasattr(SqlAlchemyStore, method_name), f"Method {method_name} not found on SqlAlchemyStore"
 
-    def test_no_workspace_methods_included(self):
-        """Workspace methods must NOT be in the list (they have their own cache)."""
-        for method_name in _PERMISSION_CUD_METHODS:
-            assert "workspace" not in method_name, f"Workspace method {method_name} should not be in _PERMISSION_CUD_METHODS"
+    def test_workspace_methods_included(self):
+        """Workspace permission methods MUST be in the list (issue #253).
+
+        They were previously excluded on the grounds that workspace_cache had its own
+        cache. But that is a *different* cache namespace: when workspaces are enabled,
+        workspace permissions feed resolution through the workspace fallback, so
+        clearing only the workspace cache left the permission cache serving a revoked
+        permission until its TTL expired.
+        """
+        for method_name in (
+            "create_workspace_permission",
+            "update_workspace_permission",
+            "delete_workspace_permission",
+            "create_workspace_group_permission",
+            "update_workspace_group_permission",
+            "delete_workspace_group_permission",
+        ):
+            assert method_name in _PERMISSION_CUD_METHODS, f"{method_name} must flush the permission cache"
 
     def test_no_user_management_methods_included(self):
         """User CRUD methods (create_user, update_user, delete_user) must NOT be in the list."""
@@ -147,9 +167,37 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_set_user_groups_flushes_cache(self, mock_flush, mock_store):
-        """Changing group membership must flush the cache."""
+    def test_set_user_groups_unchanged_does_not_flush_cache(self, mock_flush, mock_store):
+        """A sync that changed nothing (every login re-asserting membership) must not flush (issue #456)."""
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome()
         mock_store.set_user_groups("user1", ["group1", "group2"])
+        mock_flush.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "outcome_kwargs",
+        [
+            {"added": [("user1", "group2")]},
+            {"removed": [("user1", "group1")]},
+            {"added": [("user1", "group2")], "removed": [("user1", "group1")]},
+        ],
+        ids=["added", "removed", "both"],
+    )
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_changed_flushes_cache(self, mock_flush, mock_store, outcome_kwargs):
+        """A sync that added or removed a membership must flush the cache."""
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome(**outcome_kwargs)
+        mock_store.set_user_groups("user1", ["group1", "group2"])
+        mock_flush.assert_called_once()
+
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_unknown_result_flushes_cache(self, mock_flush, mock_store):
+        """Anything but a MembershipOutcome reporting no change flushes — fail safe, never stale."""
+        mock_store.group_repo.set_groups_for_user.return_value = None
+        mock_store.set_user_groups("user1", ["group1"])
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
@@ -245,6 +293,7 @@ class TestComprehensiveCUDCoverage:
             "update_registered_model_permission": ("model1", "user1", "MANAGE"),
             "delete_registered_model_permission": ("model1", "user1"),
             "rename_registered_model_permissions": ("old", "new"),
+            "move_registered_model_permissions": ("old", "new"),
             "wipe_registered_model_permissions": ("model1",),
             "create_group_model_permission": ("group1", "model1", "READ"),
             "update_group_model_permission": ("group1", "model1", "MANAGE"),
@@ -296,6 +345,10 @@ class TestComprehensiveCUDCoverage:
             "create_gateway_endpoint_permission": ("gw1", "user1", "READ"),
             "update_gateway_endpoint_permission": ("gw1", "user1", "MANAGE"),
             "delete_gateway_endpoint_permission": ("gw1", "user1"),
+            "grant_creator_prompt_permission": ("prompt1", "user1"),
+            "grant_creator_gateway_endpoint_permission": ("gw1", "user1"),
+            "grant_creator_gateway_secret_permission": ("gw1", "user1"),
+            "grant_creator_gateway_model_definition_permission": ("gw1", "user1"),
             "rename_gateway_endpoint_permissions": ("old", "new"),
             "wipe_gateway_endpoint_permissions": ("gw1",),
             "create_group_gateway_endpoint_permission": ("group1", "gw1", "READ"),
@@ -342,7 +395,16 @@ class TestComprehensiveCUDCoverage:
             "create_gateway_model_definition_permission": ("model1", "user1", "READ"),
             "update_gateway_model_definition_permission": ("model1", "user1", "MANAGE"),
             "delete_gateway_model_definition_permission": ("model1", "user1"),
+            "rename_gateway_model_definition_permissions": ("old", "new"),
             "wipe_gateway_model_definition_permissions": ("model1",),
+            # MCP servers
+            "create_mcp_server_permission": ("com.example/server", "user1", "READ"),
+            "update_mcp_server_permission": ("com.example/server", "user1", "MANAGE"),
+            "delete_mcp_server_permission": ("com.example/server", "user1"),
+            "wipe_mcp_server_permissions": ("com.example/server",),
+            "create_group_mcp_server_permission": ("group1", "com.example/server", "READ"),
+            "update_group_mcp_server_permission": ("group1", "com.example/server", "MANAGE"),
+            "delete_group_mcp_server_permission": ("group1", "com.example/server"),
             "create_group_gateway_model_definition_permission": (
                 "group1",
                 "model1",
@@ -386,6 +448,21 @@ class TestComprehensiveCUDCoverage:
             "set_user_groups": ("user1", ["group1"]),
             "add_user_to_group": ("user1", "group1"),
             "remove_user_from_group": ("user1", "group1"),
+            # Workspace permissions (issue #253 — these feed the workspace fallback in
+            # permission resolution, so they must flush the permission cache too)
+            "create_workspace_permission": ("ws1", "user1", "READ"),
+            "update_workspace_permission": ("ws1", "user1", "EDIT"),
+            "delete_workspace_permission": ("ws1", "user1"),
+            "create_workspace_group_permission": ("ws1", "group1", "READ"),
+            "update_workspace_group_permission": ("ws1", "group1", "EDIT"),
+            "delete_workspace_group_permission": ("ws1", "group1"),
+            "create_workspace_regex_permission": (".*", 1, "READ", "user1"),
+            "update_workspace_regex_permission": (".*", 1, "EDIT", "user1", 1),
+            "delete_workspace_regex_permission": ("user1", 1),
+            "create_workspace_group_regex_permission": ("group1", ".*", 1, "READ"),
+            "update_workspace_group_regex_permission": (1, "group1", ".*", 1, "EDIT"),
+            "delete_workspace_group_regex_permission": ("group1", 1),
+            "wipe_workspace_permissions": ("ws1",),
         }
 
         # Verify every method in _PERMISSION_CUD_METHODS has sample args
@@ -399,3 +476,193 @@ class TestComprehensiveCUDCoverage:
             args = sample_args[method_name]
             method(*args)
             assert mock_flush.called, f"flush_permission_cache() not called after {method_name}"
+
+
+class TestWorkspaceCacheInvalidationRegressions:
+    """Regression tests for the three fail-open holes found while investigating #253.
+
+    All three left REVOKED authorization working until the workspace cache TTL (300s)
+    expired. They are asserted at the store layer because that is where the guarantee
+    now lives — putting invalidation only in the router made it bypassable by any
+    other caller.
+    """
+
+    def test_group_workspace_cud_invalidates_group_members(self, mock_store):
+        """BUG 1: group-scoped workspace CUD used to invalidate nothing (decision D-15)."""
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_group_workspace_permission") as inv:
+            mock_store.delete_workspace_group_permission("ws-prod", "team-a")
+            inv.assert_called_once_with(group_name="team-a", workspace="ws-prod")
+
+    def test_membership_change_invalidates_that_users_workspace_entries(self, mock_store):
+        """BUG 2: membership mutations flushed the permission cache but not the workspace cache."""
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries") as inv:
+            mock_store.set_user_groups("alice", [])
+            inv.assert_called_once_with("alice")
+
+    def test_membership_invalidation_is_targeted_not_a_full_flush(self, mock_store):
+        """Must NOT full-flush: OIDC login re-syncs membership on every sign-in."""
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries"),
+            patch("mlflow_oidc_auth.utils.workspace_cache.flush_workspace_cache") as flush,
+        ):
+            mock_store.set_user_groups("alice", ["g1"])
+            flush.assert_not_called()
+
+    def test_user_workspace_cud_invalidates_at_store_layer(self, mock_store):
+        """BUG 3: user workspace CUD invalidated only in the router, so direct store calls leaked."""
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_workspace_permission") as inv:
+            mock_store.delete_workspace_permission("ws-prod", "bob")
+            inv.assert_called_once_with("bob", "ws-prod")
+
+    def test_workspace_cud_also_flushes_the_permission_cache(self, mock_store):
+        """BUG 3 (other half): the workspace cache and permission cache are separate namespaces."""
+        with patch(FLUSH_PATCH_PATH) as mock_flush:
+            mock_store.delete_workspace_permission("ws-prod", "bob")
+            mock_flush.assert_called_once()
+
+    def test_invalidation_failure_never_masks_a_successful_mutation(self, mock_store):
+        """A cache problem must not turn a successful permission change into an error."""
+        with patch(
+            "mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries",
+            side_effect=RuntimeError("cache down"),
+        ):
+            mock_store.set_user_groups("alice", ["g1"])  # must not raise
+
+
+class TestSetUserGroupsRealStore:
+    """End to end with a real store and the real permission cache: no mocks of the flush path.
+
+    Uses registered models because experiment regex resolution reads experiment names from
+    MLflow's tracking store, which these tests do not stand up.
+    """
+
+    @pytest.fixture
+    def real_store(self, tmp_path, monkeypatch):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group", "regex", "group-regex"])
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        monkeypatch.setattr(perms, "store", store)
+        # The grant context (issue #460) reads the store singleton itself.
+        import mlflow_oidc_auth.store as store_module
+
+        monkeypatch.setattr(store_module, "store", store)
+        perms.flush_permission_cache()
+        yield store
+        perms.flush_permission_cache()
+
+    def test_set_user_groups_removed_member_loses_access_immediately(self, real_store):
+        """Negative test: removing a user from the granting group must not leave a cached READ behind."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        real_store.create_user("nina@example.com", "Nina")
+        real_store.populate_groups(["readers", "others"])
+        real_store.set_user_groups("nina@example.com", ["readers", "others"])
+        real_store.create_group_model_permission("readers", "model-1", "READ")
+
+        warm = perms.effective_registered_model_permission("model-1", "nina@example.com")
+        assert warm.permission == READ and warm.kind == "group", "precondition: READ cached through the group"
+
+        real_store.set_user_groups("nina@example.com", ["others"])
+
+        after = perms.effective_registered_model_permission("model-1", "nina@example.com")
+        assert after.permission == NO_PERMISSIONS, "removed member still served the cached group READ"
+
+    def test_set_user_groups_unchanged_keeps_cached_entries(self, real_store):
+        """Re-asserting the same membership (a login) leaves other users' cached decisions in place."""
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        for name in ("olga@example.com", "paul@example.com"):
+            real_store.create_user(name, name)
+        real_store.populate_groups(["readers"])
+        real_store.set_user_groups("olga@example.com", ["readers"])
+        real_store.set_user_groups("paul@example.com", ["readers"])
+        real_store.create_group_model_permission("readers", "model-1", "READ")
+        perms.effective_registered_model_permission("model-1", "paul@example.com")
+        key = perms._make_cache_key("registered_model", "model-1", "paul@example.com", perms._get_cache_workspace())
+        assert perms._get_permission_cache().get(key) is not None, "precondition: entry cached"
+
+        real_store.set_user_groups("olga@example.com", ["readers"])
+
+        assert perms._get_permission_cache().get(key) is not None, "an unchanged login sync flushed the cache"
+
+
+WS_INVALIDATE_PATH = "mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries"
+
+
+class TestMembershipWrapperWorkspaceInvalidation:
+    """One membership wrapper; the sync skips BOTH invalidations when nothing changed (PR #464 review)."""
+
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_unchanged_skips_workspace_invalidation(self, mock_flush, mock_ws, mock_store):
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome()
+        mock_store.set_user_groups("user1", ["group1"])
+        mock_flush.assert_not_called()
+        mock_ws.assert_not_called()
+
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_changed_invalidates_both_once(self, mock_flush, mock_ws, mock_store):
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome(removed=[("user1", "group1")])
+        mock_store.set_user_groups("user1", [])
+        mock_flush.assert_called_once()
+        mock_ws.assert_called_once_with("user1")
+
+    @pytest.mark.parametrize("method, args", [("add_user_to_group", ("user1", "group1")), ("remove_user_from_group", ("user1", "group1"))])
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_other_membership_methods_always_invalidate(self, mock_flush, mock_ws, mock_store, method, args):
+        getattr(mock_store, method)(*args)
+        mock_flush.assert_called_once()
+        mock_ws.assert_called_once_with("user1")
+
+    def test_membership_methods_are_wrapped_once(self):
+        """The flush wrapper and the membership wrapper used to stack; now there is one layer."""
+        from mlflow_oidc_auth.sqlalchemy_store import _MEMBERSHIP_CUD_METHODS
+
+        for name in _MEMBERSHIP_CUD_METHODS:
+            wrapped = getattr(SqlAlchemyStore, name)
+            assert hasattr(wrapped, "__wrapped__")
+            assert not hasattr(wrapped.__wrapped__, "__wrapped__"), f"{name} is wrapped more than once"
+
+
+class TestSetUserGroupsWorkspaceRealStore:
+    """Real store, real workspace cache."""
+
+    @pytest.fixture
+    def ws_store(self, tmp_path, monkeypatch):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils import workspace_cache
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group", "regex", "group-regex"])
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        monkeypatch.setattr("mlflow_oidc_auth.store.store", store, raising=False)
+        workspace_cache.flush_workspace_cache()
+        yield store
+        workspace_cache.flush_workspace_cache()
+
+    def test_set_user_groups_removed_member_loses_workspace_access_immediately(self, ws_store):
+        """Negative test: a cached group-derived workspace grant must not survive removal from the group."""
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        ws_store.create_user("wendy@example.com", "Wendy")
+        ws_store.populate_groups(["ws-readers", "others"])
+        ws_store.set_user_groups("wendy@example.com", ["ws-readers", "others"])
+        ws_store.create_workspace_group_permission("ws-prod", "ws-readers", "READ")
+        assert get_workspace_permission_cached("wendy@example.com", "ws-prod").name == "READ", "precondition: grant cached"
+
+        ws_store.set_user_groups("wendy@example.com", ["others"])
+
+        assert get_workspace_permission_cached("wendy@example.com", "ws-prod") is None, "removed member still served the cached workspace grant"

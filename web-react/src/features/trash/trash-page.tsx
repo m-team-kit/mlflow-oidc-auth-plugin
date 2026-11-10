@@ -42,10 +42,6 @@ export default function TrashPage() {
   const { showToast } = useToast();
   const [itemsToDelete, setItemsToDelete] = useState<TrashItem[] | null>(null);
 
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [activeTab]);
-
   const {
     searchTerm,
     submittedTerm,
@@ -54,23 +50,35 @@ export default function TrashPage() {
     handleClearSearch,
   } = useSearch();
 
+  // Both tabs page and search server-side; the search box is shared.
   const {
     deletedExperiments,
+    pagination: expPagination,
     isLoading: isExpLoading,
     error: expError,
     refresh: refreshExp,
-  } = useDeletedExperiments();
+  } = useDeletedExperiments(submittedTerm);
 
   const {
     deletedRuns,
+    pagination: runsPagination,
     isLoading: isRunsLoading,
     error: runsError,
     refresh: refreshRuns,
-  } = useDeletedRuns();
+  } = useDeletedRuns(submittedTerm);
 
   const isLoading = activeTab === "experiments" ? isExpLoading : isRunsLoading;
   const error = activeTab === "experiments" ? expError : runsError;
   const refresh = activeTab === "experiments" ? refreshExp : refreshRuns;
+  const pagination =
+    activeTab === "experiments" ? expPagination : runsPagination;
+
+  // Selection only ever covers visible rows: drop it when the tab, the page,
+  // the page size or the search changes.
+  const visiblePageKey = `${activeTab}:${pagination.page}:${String(pagination.pageSize)}:${submittedTerm}`;
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [visiblePageKey]);
 
   const data: TrashItem[] = useMemo(() => {
     if (activeTab === "experiments") {
@@ -94,15 +102,10 @@ export default function TrashPage() {
     }
   }, [activeTab, deletedExperiments, deletedRuns]);
 
-  const filteredData = useMemo(() => {
-    return data.filter((item) =>
-      item.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-    );
-  }, [data, submittedTerm]);
-
+  // Selection covers the rows on the current page.
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(filteredData.map((item) => item.id)));
+      setSelectedIds(new Set(data.map((item) => item.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -149,12 +152,51 @@ export default function TrashPage() {
     const ids = itemsToDelete.map((item) => item.id);
 
     try {
-      if (activeTab === "experiments") {
-        await cleanupTrash({ experiment_ids: ids.join(",") });
+      const result =
+        activeTab === "experiments"
+          ? await cleanupTrash({ experiment_ids: ids.join(",") })
+          : await cleanupTrash({ run_ids: ids.join(",") });
+
+      // The endpoint returns 200 even when some items could not be permanently deleted
+      // (e.g. their artifacts could not be removed, so the item was kept rather than
+      // risking orphaned artifacts - and, transitively, an experiment that still owns such a
+      // run is kept too and reported in `failed_experiments`) - surface that instead of
+      // reporting full success. The endpoint only ever reports failures for ids in this
+      // request (deleting by run_ids alone no longer sweeps other trashed experiments), but
+      // clamp at zero anyway so a malformed response can never show a negative success count.
+      // Each kept item is named (by its name when it was one of the selected items), with its
+      // reason. Deleting experiments also deletes their runs, so on that tab a kept run's own
+      // reason (e.g. its artifacts could not be removed) is shown too: it is why the experiment
+      // was kept.
+      const names = new Map(itemsToDelete.map((item) => [item.id, item.name]));
+      const describe = (id: string | undefined, error: string) =>
+        `${(id && names.get(id)) || id || "unknown"} (${error})`;
+      const failures =
+        activeTab === "experiments"
+          ? (result.failed_experiments ?? []).map((f) =>
+              describe(f.experiment_id, f.error),
+            )
+          : (result.failed_runs ?? []).map((f) => describe(f.run_id, f.error));
+      const keptRuns =
+        activeTab === "experiments"
+          ? (result.failed_runs ?? []).map((f) => describe(f.run_id, f.error))
+          : [];
+      const failedCount = failures.length;
+      const succeededCount = Math.max(ids.length - failedCount, 0);
+
+      if (failedCount > 0) {
+        const reasons =
+          failures.join("; ") +
+          (keptRuns.length > 0 ? `. Runs kept: ${keptRuns.join("; ")}` : "");
+        showToast(
+          succeededCount > 0
+            ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${reasons}`
+            : `Failed to delete ${failedCount} item(s): ${reasons}`,
+          "error",
+        );
       } else {
-        await cleanupTrash({ run_ids: ids.join(",") });
+        showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       }
-      showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       setSelectedIds(new Set());
       setItemsToDelete(null);
       refresh();
@@ -172,10 +214,7 @@ export default function TrashPage() {
           <input
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
-            checked={
-              filteredData.length > 0 &&
-              selectedIds.size === filteredData.length
-            }
+            checked={data.length > 0 && selectedIds.size === data.length}
             onChange={(e) => handleSelectAll(e.target.checked)}
           />
         </div>
@@ -329,7 +368,8 @@ export default function TrashPage() {
           </div>
 
           <EntityListTable
-            data={filteredData}
+            data={data}
+            pagination={pagination}
             columns={columns}
             searchTerm={submittedTerm}
           />

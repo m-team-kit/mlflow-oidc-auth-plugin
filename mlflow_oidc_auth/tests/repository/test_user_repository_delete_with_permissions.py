@@ -1,5 +1,3 @@
-import pytest
-
 from mlflow_oidc_auth.db.models import (
     SqlExperimentPermission,
     SqlGatewayEndpointPermission,
@@ -19,7 +17,7 @@ def test_delete_user_with_experiment_permissions_deletes_permissions_rows(
     store.init_db(f"sqlite:///{db_path.as_posix()}")
 
     username = "user@example.com"
-    store.create_user(username=username, password="pw", display_name="User")
+    store.create_user(username=username, display_name="User")
     store.create_experiment_permission(experiment_id="exp1", username=username, permission="READ")
 
     with store.ManagedSessionMaker() as session:
@@ -43,7 +41,7 @@ def test_delete_user_with_gateway_permissions_deletes_all_gateway_rows(
     store.init_db(f"sqlite:///{db_path.as_posix()}")
 
     username = "gw-user@example.com"
-    store.create_user(username=username, password="pw", display_name="GW User")
+    store.create_user(username=username, display_name="GW User")
 
     store.create_gateway_endpoint_permission(gateway_name="ep1", username=username, permission="READ")
     store.create_gateway_secret_permission(gateway_name="sec1", username=username, permission="READ")
@@ -74,9 +72,9 @@ def test_delete_user_with_quota_deletes_quota_row(
     store.init_db(f"sqlite:///{db_path.as_posix()}")
 
     username = "quota-user@example.com"
-    store.create_user(username=username, password="pw", display_name="Quota User")
+    store.create_user(username=username, display_name="Quota User")
 
-    with store.ManagedSessionMaker() as session:
+    with store.ManagedSessionMaker(read_only=False) as session:
         user = session.query(SqlUser).filter(SqlUser.username == username).one()
         user_id = user.id
         session.add(SqlUserQuota(user_id=user_id, quota_bytes=1024, used_bytes=0))

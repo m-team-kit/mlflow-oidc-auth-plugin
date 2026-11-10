@@ -1,13 +1,11 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SharedPermissionsPage } from "./shared-permissions-page";
 
 const mockUseUser =
   vi.fn<
     () => { currentUser: { is_admin: boolean; username: string } | null }
   >();
-const mockUseUserDetails =
-  vi.fn<() => { user: unknown; refetch: () => void }>();
 const mockUseRuntimeConfig = vi.fn<() => { gen_ai_gateway_enabled: boolean }>();
 
 // Mock localStorage
@@ -49,10 +47,6 @@ vi.mock("react-router", () => ({
 
 vi.mock("../../core/hooks/use-user", () => ({
   useUser: () => mockUseUser(),
-}));
-
-vi.mock("../../core/hooks/use-user-details", () => ({
-  useUserDetails: () => mockUseUserDetails(),
 }));
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
@@ -103,8 +97,10 @@ vi.mock("../../shared/components/switch", () => ({
   ),
 }));
 
-vi.mock("../../shared/components/token-info-block", () => ({
-  TokenInfoBlock: () => <div>Token Block</div>,
+vi.mock("../tokens/components/user-tokens-panel", () => ({
+  UserTokensPanel: ({ username }: { username?: string }) => (
+    <div data-testid="tokens-panel">{username}</div>
+  ),
 }));
 
 describe("SharedPermissionsPage", () => {
@@ -113,10 +109,6 @@ describe("SharedPermissionsPage", () => {
     mockUseParams.mockReturnValue({ username: "testuser" });
     mockUseUser.mockReturnValue({
       currentUser: { is_admin: false, username: "testuser" },
-    });
-    mockUseUserDetails.mockReturnValue({
-      user: null,
-      refetch: vi.fn(),
     });
     mockUseRuntimeConfig.mockReturnValue({
       gen_ai_gateway_enabled: false,
@@ -230,6 +222,40 @@ describe("SharedPermissionsPage", () => {
     expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
   });
 
+  it("always shows an MCP Servers tab, independent of the AI gateway flag", () => {
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
+  });
+
+  it("offers no regex mode on the MCP servers tab: there is no pattern API", () => {
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "" },
+    });
+    localStorage.setItem("_mlflow_is_regex_mode", "true");
+    render(
+      <SharedPermissionsPage
+        type="mcp-servers"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.queryByTestId("regex-switch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("regex-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("normal-view")).toBeInTheDocument();
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Permissions for testuser",
+    );
+  });
+
   it("encodes entityName in tab links", () => {
     mockUseParams.mockReturnValue({
       username: "alice@example.com",
@@ -252,5 +278,81 @@ describe("SharedPermissionsPage", () => {
     expect(modelsLink.getAttribute("href")).toContain(
       "/users/alice@example.com/models",
     );
+  });
+
+  it("shows a Tokens tab only to admins, with an encoded link", () => {
+    mockUseParams.mockReturnValue({ username: "svc/bot" });
+    const { rerender } = render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/service-accounts"
+        entityKind="user"
+      />,
+    );
+    expect(
+      screen.queryByRole("link", { name: "Tokens" }),
+    ).not.toBeInTheDocument();
+
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "admin" },
+    });
+    rerender(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/service-accounts"
+        entityKind="user"
+      />,
+    );
+    expect(
+      screen.getByRole("link", { name: "Tokens" }).getAttribute("href"),
+    ).toBe("/service-accounts/svc%2Fbot/tokens");
+  });
+
+  it("renders the admin tokens panel on the tokens tab", () => {
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "admin" },
+    });
+    render(
+      <SharedPermissionsPage
+        type="tokens"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Tokens for testuser",
+    );
+    expect(screen.getByTestId("tokens-panel")).toHaveTextContent("testuser");
+    expect(screen.queryByTestId("normal-view")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("regex-switch")).not.toBeInTheDocument();
+  });
+
+  it("does not render the tokens panel for a non-admin", () => {
+    render(
+      <SharedPermissionsPage
+        type="tokens"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+    expect(screen.queryByTestId("tokens-panel")).not.toBeInTheDocument();
+  });
+
+  it("offers no Tokens tab for groups", () => {
+    mockUseParams.mockReturnValue({ groupName: "team" });
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "admin" },
+    });
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/groups"
+        entityKind="group"
+      />,
+    );
+    expect(
+      screen.queryByRole("link", { name: "Tokens" }),
+    ).not.toBeInTheDocument();
   });
 });

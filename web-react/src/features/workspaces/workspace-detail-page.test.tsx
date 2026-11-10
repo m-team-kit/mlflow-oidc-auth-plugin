@@ -44,7 +44,7 @@ const mockUseWorkspaceGroups: Mock<
   }
 > = vi.fn();
 
-const mockRequest = vi.fn();
+const mockRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 
@@ -93,7 +93,6 @@ vi.mock("../../core/hooks/use-user", () => ({
       groups: mockUserGroups,
       id: 1,
       is_service_account: false,
-      password_expiration: null,
     },
     isLoading: false,
     error: null,
@@ -107,15 +106,6 @@ vi.mock("../../shared/components/toast/use-toast", () => ({
 
 vi.mock("../../core/services/api-utils", () => ({
   request: (...args: unknown[]) => mockRequest(...args),
-}));
-
-vi.mock("../../core/configs/api-endpoints", () => ({
-  DYNAMIC_API_ENDPOINTS: {
-    WORKSPACE_USERS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users`,
-    WORKSPACE_GROUPS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups`,
-    WORKSPACE_USER: (workspace: string, username: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users/${username}`,
-    WORKSPACE_GROUP: (workspace: string, groupName: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups/${groupName}`,
-  },
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({

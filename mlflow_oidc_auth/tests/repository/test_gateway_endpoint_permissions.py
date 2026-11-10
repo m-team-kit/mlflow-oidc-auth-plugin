@@ -86,12 +86,11 @@ class TestGetPermission:
         assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
     def test_multiple_found(self, session_maker, session, repo_cls, field):
-        """Test MultipleResultsFound raises MlflowException."""
+        """Unassigned duplicates (see _GrantWorkspaceScope._one_in_scope): one is picked deterministically."""
         repo = repo_cls(session_maker)
-        session.query().join().filter().one.side_effect = MultipleResultsFound()
-        with pytest.raises(MlflowException) as exc:
-            repo._get_permission(session, "res-1", "alice")
-        assert exc.value.error_code == "INVALID_STATE"
+        query = session.query().join().filter()
+        query.one.side_effect = MultipleResultsFound()
+        assert repo._get_permission(session, "res-1", "alice") is query.order_by().first()
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +168,7 @@ class TestListPermissionsForUser:
         perm1.to_mlflow_entity.return_value = "e1"
         perm2 = MagicMock()
         perm2.to_mlflow_entity.return_value = "e2"
-        session.query().filter().all.return_value = [perm1, perm2]
+        session.query().join().filter().all.return_value = [perm1, perm2]
         with patch(f"{_BASE}.get_user", return_value=user):
             result = repo.list_permissions_for_user("alice")
         assert result == ["e1", "e2"]

@@ -67,7 +67,7 @@ class WorkspaceGroupPermissionRepository:
         Raises:
             MlflowException: If a permission already exists for this workspace+group.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = SqlWorkspaceGroupPermission(workspace=workspace, group_id=group_id, permission=permission)
                 session.add(perm)
@@ -82,6 +82,10 @@ class WorkspaceGroupPermissionRepository:
     def update(self, workspace: str, group_id: int, permission: str) -> WorkspaceGroupPermission:
         """Update a group's workspace permission.
 
+        An edit through here is an administrator's, so it also clears ``rule_id``: a grant a
+        workspace group rule created becomes a manual one, which no rule changes or removes again
+        (issue #418).
+
         Parameters:
             workspace: The workspace name.
             group_id: The group's ID.
@@ -93,7 +97,7 @@ class WorkspaceGroupPermissionRepository:
         Raises:
             MlflowException: If the permission does not exist.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = (
                     session.query(SqlWorkspaceGroupPermission)
@@ -104,6 +108,7 @@ class WorkspaceGroupPermissionRepository:
                     .one()
                 )
                 perm.permission = permission
+                perm.rule_id = None
                 session.flush()
                 return perm.to_mlflow_entity()
             except NoResultFound:
@@ -122,7 +127,7 @@ class WorkspaceGroupPermissionRepository:
         Raises:
             MlflowException: If the permission does not exist.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = (
                     session.query(SqlWorkspaceGroupPermission)
@@ -175,7 +180,7 @@ class WorkspaceGroupPermissionRepository:
         Returns:
             Number of permission rows deleted.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             count = session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.workspace == workspace).delete()
             session.flush()
             return count

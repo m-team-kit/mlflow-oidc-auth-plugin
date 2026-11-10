@@ -4,7 +4,6 @@ import { DYNAMIC_API_ENDPOINTS, STATIC_API_ENDPOINTS } from "./api-endpoints";
 describe("API Endpoints", () => {
   it("static endpoints are defined", () => {
     expect(STATIC_API_ENDPOINTS.ALL_GROUPS).toBeDefined();
-    expect(STATIC_API_ENDPOINTS.GET_CURRENT_USER).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_ENDPOINTS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_SECRETS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_MODELS).toBeDefined();
@@ -13,14 +12,24 @@ describe("API Endpoints", () => {
     );
   });
 
+  it("SCIM status and activity endpoints", () => {
+    expect(STATIC_API_ENDPOINTS.SCIM_STATUS).toBe("/api/2.0/mlflow/scim/status");
+    expect(STATIC_API_ENDPOINTS.SCIM_ACTIVITY).toBe(
+      "/api/2.0/mlflow/scim/activity",
+    );
+  });
+
+  it("user session endpoints encode the username and pk", () => {
+    expect(DYNAMIC_API_ENDPOINTS.USER_SESSIONS("a b@x.com")).toBe(
+      "/api/2.0/mlflow/users/a%20b%40x.com/sessions",
+    );
+    expect(DYNAMIC_API_ENDPOINTS.USER_SESSION("bob@x.com", 7)).toBe(
+      "/api/2.0/mlflow/users/bob%40x.com/sessions/7",
+    );
+  });
+
   describe("Dynamic Endpoints", () => {
     // Test a sample of dynamic endpoints to ensure they return strings and boost coverage
-    it("returns correct user details URL", () => {
-      expect(DYNAMIC_API_ENDPOINTS.GET_USER_DETAILS("testuser")).toBe(
-        "/api/2.0/mlflow/users/testuser",
-      );
-    });
-
     it("returns correct user experiment permissions URL", () => {
       expect(
         DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSIONS("testuser"),
@@ -116,6 +125,36 @@ describe("API Endpoints", () => {
       );
       expect(DYNAMIC_API_ENDPOINTS.RESTORE_RUN("run1")).toBe(
         "/oidc/trash/runs/run1/restore",
+      );
+    });
+
+    it("returns correct MCP server permission URLs, encoding the slash in the name", () => {
+      expect(STATIC_API_ENDPOINTS.ALL_MCP_SERVERS).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_USER_PERMISSIONS("com.example/weather"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/users",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_GROUP_PERMISSIONS("com.example/weather"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/groups",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSIONS("u1")).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION("u1", "com.example/w"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/mcp-servers/com.example%2Fw");
+      expect(DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSIONS("g1")).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION("g1", "com.example/w"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/mcp-servers/com.example%2Fw",
       );
     });
 

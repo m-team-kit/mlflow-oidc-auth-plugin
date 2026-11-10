@@ -17,6 +17,7 @@ class _AppLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         logger.handle(record)
 
+
 try:
     import apscheduler  # noqa: F401
 
@@ -43,6 +44,7 @@ def _create_scheduler():
         from apscheduler.schedulers.background import BackgroundScheduler
 
         return BackgroundScheduler()
+
 
 _scheduler = None
 
@@ -94,6 +96,7 @@ def _run_cleanup_trash() -> None:
 
         logger.info("Running cleanup...")
         cleanup_trash(config.QUOTA_TRASH_RETENTION_DAYS)
+
 
 def init_scheduler() -> None:
     """Start the background scheduler. Called once at app startup."""

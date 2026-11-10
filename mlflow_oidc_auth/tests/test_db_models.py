@@ -4,7 +4,6 @@ Tests all SQLAlchemy model relationships, constraints, and entity conversion met
 """
 
 import pytest
-from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -54,8 +53,6 @@ def sample_user(db_session):
     user = SqlUser(
         username="testuser",
         display_name="Test User",
-        password_hash="hashed_password",
-        password_expiration=datetime(2025, 12, 31),
         is_admin=False,
         is_service_account=False,
     )
@@ -81,8 +78,6 @@ class TestSqlUser:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hashed_password",
-            password_expiration=datetime(2025, 12, 31),
             is_admin=True,
             is_service_account=False,
         )
@@ -95,8 +90,6 @@ class TestSqlUser:
         assert entity.id == user.id
         assert entity.username == "testuser"
         assert entity.display_name == "Test User"
-        assert entity.password_hash == "hashed_password"
-        assert entity.password_expiration == datetime(2025, 12, 31)
         assert entity.is_admin is True
         assert entity.is_service_account is False
 
@@ -105,7 +98,6 @@ class TestSqlUser:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hashed_password",
             is_admin=False,
             is_service_account=True,
         )
@@ -142,14 +134,12 @@ class TestSqlUser:
         user1 = SqlUser(
             username="duplicate",
             display_name="User 1",
-            password_hash="hash1",
             is_admin=False,
             is_service_account=False,
         )
         user2 = SqlUser(
             username="duplicate",
             display_name="User 2",
-            password_hash="hash2",
             is_admin=False,
             is_service_account=False,
         )
@@ -209,8 +199,8 @@ class TestSqlRegisteredModelPermission:
 
     def test_unique_constraint(self, db_session, sample_user):
         """Test unique constraint on name and user_id."""
-        perm1 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ")
-        perm2 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="WRITE")
+        perm1 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ", workspace="default")
+        perm2 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="WRITE", workspace="default")
 
         db_session.add(perm1)
         db_session.commit()
@@ -218,6 +208,12 @@ class TestSqlRegisteredModelPermission:
         db_session.add(perm2)
         with pytest.raises(IntegrityError):
             db_session.commit()
+
+    def test_the_same_name_in_another_workspace_is_a_separate_grant(self, db_session, sample_user):
+        """MLflow keeps names unique per workspace; so are grants on them."""
+        db_session.add(SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ", workspace="team-a"))
+        db_session.add(SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="MANAGE", workspace="team-b"))
+        db_session.commit()
 
 
 class TestSqlGroup:
@@ -343,8 +339,8 @@ class TestSqlRegisteredModelGroupPermission:
 
     def test_unique_constraint(self, db_session, sample_group):
         """Test unique constraint on name and group_id."""
-        perm1 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ")
-        perm2 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="WRITE")
+        perm1 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ", workspace="default")
+        perm2 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="WRITE", workspace="default")
 
         db_session.add(perm1)
         db_session.commit()
@@ -352,6 +348,12 @@ class TestSqlRegisteredModelGroupPermission:
         db_session.add(perm2)
         with pytest.raises(IntegrityError):
             db_session.commit()
+
+    def test_the_same_name_in_another_workspace_is_a_separate_grant(self, db_session, sample_group):
+        """MLflow keeps names unique per workspace; so are grants on them."""
+        db_session.add(SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ", workspace="team-a"))
+        db_session.add(SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="MANAGE", workspace="team-b"))
+        db_session.commit()
 
 
 class TestSqlExperimentRegexPermission:
@@ -715,7 +717,6 @@ class TestModelValidation:
         user = SqlUser(
             username=long_username,
             display_name="Test",
-            password_hash="hash",
             is_admin=False,
             is_service_account=False,
         )
@@ -734,7 +735,6 @@ class TestModelValidation:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hash",
             # is_admin and is_service_account should default to False
         )
         db_session.add(user)
@@ -748,15 +748,11 @@ class TestModelValidation:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hash",
-            password_expiration=None,  # Should be allowed
             is_admin=False,
             is_service_account=False,
         )
         db_session.add(user)
         db_session.commit()
-
-        assert user.password_expiration is None
 
         # Test model permission with nullable prompt field
         model_perm = SqlRegisteredModelGroupPermission(

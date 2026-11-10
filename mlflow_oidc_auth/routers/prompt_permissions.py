@@ -6,9 +6,12 @@ from fastapi.responses import JSONResponse
 from mlflow_oidc_auth.dependencies import check_prompt_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
+from mlflow_oidc_auth.models.responses import RegisteredModelListItem
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_prompts
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import PROMPT_PERMISSIONS_ROUTER_PREFIX
 
@@ -73,7 +76,7 @@ async def get_prompt_users(
         # Prompts are stored as registered models in the system
         user_models = {}
         if hasattr(user, "registered_model_permissions") and user.registered_model_permissions:
-            user_models = {model.name: model.permission for model in user.registered_model_permissions}
+            user_models = {model.name: model.permission for model in user.registered_model_permissions if in_grant_workspace(model)}
 
         if prompt_name in user_models:
             users.append(
@@ -101,15 +104,20 @@ async def get_prompt_groups(
     """List groups with explicit permissions for a prompt."""
 
     try:
-        groups = store.prompt_group_repo.list_groups_for_prompt(str(prompt_name))
+        groups = store.prompt_group_repo.list_groups_for_resource(str(prompt_name))
         return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving prompt group permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve prompt group permissions")
 
 
-@prompt_permissions_router.get(LIST_PROMPTS, summary="List accessible prompts", description="Retrieves a list of prompts that the user has access to.")
-async def list_prompts(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+@prompt_permissions_router.get(
+    LIST_PROMPTS,
+    response_model=List[RegisteredModelListItem],
+    summary="List accessible prompts",
+    description="Retrieves a list of prompts that the user has access to.",
+)
+async def list_prompts(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List prompts accessible to the authenticated user.
 
@@ -123,6 +131,9 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible items.
 
     Returns:
     --------
@@ -144,7 +155,11 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
         # Regular user can only see prompts they can manage
         prompts = filter_manageable_prompts(username, all_prompts)
 
+    # Paginate strictly after the permission filter: the total never counts a hidden prompt
+    prompts, headers = paginate_with_headers(prompts, key=lambda p: p.name, params=page)
+
     return JSONResponse(
+        headers=headers,
         content=[
             {
                 "name": model.name,
@@ -153,5 +168,5 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
                 "aliases": model.aliases,
             }
             for model in prompts
-        ]
+        ],
     )

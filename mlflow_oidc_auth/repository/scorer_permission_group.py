@@ -11,7 +11,8 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlGroup, SqlScorerGroupPermission
+from mlflow_oidc_auth import permission_kinds
+from mlflow_oidc_auth.db.models import SqlGroup, SqlScorerGroupPermission, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import ScorerPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
@@ -19,7 +20,7 @@ from mlflow_oidc_auth.repository.utils import get_group
 
 
 class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGroupPermission, ScorerPermission]):
-    model_class = SqlScorerGroupPermission
+    grant_kind = permission_kinds.SCORER
     resource_id_attr = "experiment_id"
 
     # -- private helpers (2-part key) -----------------------------------------
@@ -42,7 +43,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
 
     def grant_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = SqlScorerGroupPermission(
                 experiment_id=experiment_id,
@@ -74,12 +75,22 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
 
     def get_group_permission_for_user_scorer(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
         with self._Session() as session:
-            user_groups = self._list_user_groups(username)
+            # Single query across all the user's groups rather than one lookup per
+            # group — see issue #253 and BaseGroupPermissionRepository.
+            candidates = (
+                session.query(SqlScorerGroupPermission)
+                .join(SqlUserGroup, SqlUserGroup.group_id == SqlScorerGroupPermission.group_id)
+                .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                .filter(
+                    SqlUser.username == username,
+                    SqlScorerGroupPermission.experiment_id == experiment_id,
+                    SqlScorerGroupPermission.scorer_name == scorer_name,
+                )
+                .order_by(SqlScorerGroupPermission.group_id)
+                .all()
+            )
             best: Optional[SqlScorerGroupPermission] = None
-            for group_name in user_groups:
-                perm = self._get_scorer_group_permission(session, experiment_id, scorer_name, group_name)
-                if perm is None:
-                    continue
+            for perm in candidates:
                 if best is None:
                     best = perm
                     continue
@@ -99,7 +110,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
 
     def update_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(SqlScorerGroupPermission)
@@ -115,7 +126,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
             return perm.to_mlflow_entity()
 
     def revoke_group_permission(self, group_name: str, experiment_id: str, scorer_name: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(SqlScorerGroupPermission)

@@ -804,4 +804,55 @@ class TestCleanupTrash:
         reconciled = sorted(c.args[0] for c in mock_reconcile.call_args_list)
         assert reconciled == ["alice", "bob"]
 
+    def test_reads_every_page_of_deleted_experiments(self):
+        import time
 
+        from mlflow.store.entities.paged_list import PagedList
+
+        old_ms = int(time.time() * 1000) - 30 * 86400 * 1000
+        pages = {None: PagedList([_make_deleted_experiment("exp1", old_ms)], "t1"), "t1": PagedList([_make_deleted_experiment("exp2", old_ms)], None)}
+        client = MagicMock()
+        client.search_experiments.side_effect = lambda view_type, page_token: pages[page_token]
+
+        with (
+            patch("mlflow_oidc_auth.utils.quota.store"),
+            patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
+            patch("mlflow.tracking.MlflowClient", return_value=client),
+            patch("mlflow_oidc_auth.utils.quota.get_experiment_owner", return_value="alice"),
+            patch("mlflow.server.handlers._get_tracking_store"),
+            patch("mlflow_oidc_auth.utils.trash_cleanup.hard_delete_experiment_with_runs", return_value=True) as mock_hard_delete,
+            patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota"),
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+
+            from mlflow_oidc_auth.utils.quota import cleanup_trash
+
+            cleanup_trash(retention_days=7)
+
+        assert [c.args[0] for c in mock_hard_delete.call_args_list] == ["exp1", "exp2"]
+
+    def test_a_kept_experiment_is_logged_as_kept_and_its_owner_still_reconciled(self, caplog):
+        """Some runs may have been deleted even though the experiment was kept."""
+        import time
+
+        client = MagicMock()
+        client.search_experiments.return_value = [_make_deleted_experiment("exp1", int(time.time() * 1000) - 30 * 86400 * 1000)]
+
+        with (
+            patch("mlflow_oidc_auth.utils.quota.store"),
+            patch("mlflow_oidc_auth.utils.quota.config") as mock_config,
+            patch("mlflow.tracking.MlflowClient", return_value=client),
+            patch("mlflow_oidc_auth.utils.quota.get_experiment_owner", return_value="alice"),
+            patch("mlflow.server.handlers._get_tracking_store"),
+            patch("mlflow_oidc_auth.utils.trash_cleanup.hard_delete_experiment_with_runs", return_value=False),
+            patch("mlflow_oidc_auth.utils.quota.reconcile_user_quota") as mock_reconcile,
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+
+            from mlflow_oidc_auth.utils.quota import cleanup_trash
+
+            cleanup_trash(retention_days=7)
+
+        assert "Kept experiment exp1" in caplog.text
+        assert "Permanently deleted experiment exp1" not in caplog.text
+        mock_reconcile.assert_called_once_with("alice")

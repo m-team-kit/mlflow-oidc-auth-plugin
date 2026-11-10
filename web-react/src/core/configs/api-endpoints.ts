@@ -1,5 +1,6 @@
 export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
+  GROUPS_DETAILS: "/api/2.0/mlflow/permissions/groups/details",
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
@@ -9,13 +10,19 @@ export const STATIC_API_ENDPOINTS = {
   ALL_GATEWAY_SECRETS: "/api/2.0/mlflow/permissions/gateways/secrets",
   ALL_GATEWAY_MODELS: "/api/2.0/mlflow/permissions/gateways/model-definitions",
 
+  // MCP server registry
+  ALL_MCP_SERVERS: "/api/2.0/mlflow/permissions/mcp-servers",
+
   // Workspace management
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
+  // Workspace group rules (admin only)
+  WORKSPACE_RULES: "/api/3.0/mlflow/workspace-rules",
+  WORKSPACE_RULES_PREVIEW: "/api/3.0/mlflow/workspace-rules/preview",
 
   // User management
-  CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
-  GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
-  USERS_RESOURCE: "/api/2.0/mlflow/users",
+  SERVICE_ACCOUNT_SOURCES: "/api/2.0/mlflow/users/service-account-sources",
+  // The signed-in user's own API tokens
+  CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/current/tokens",
 
   // Quota management
   USER_QUOTAS: "/oidc/quota/users",
@@ -27,12 +34,31 @@ export const STATIC_API_ENDPOINTS = {
 
   // Webhook management
   WEBHOOKS_RESOURCE: "/oidc/webhook",
+
+  // SCIM token management
+  SCIM_TOKENS_RESOURCE: "/api/2.0/mlflow/scim/tokens",
+  // SCIM provisioning status and activity log
+  SCIM_STATUS: "/api/2.0/mlflow/scim/status",
+  SCIM_ACTIVITY: "/api/2.0/mlflow/scim/activity",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
-  GET_USER_DETAILS: (userName: string) =>
-    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
+  USER_SESSIONS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
+  USER_SERVICE_ACCOUNT_SOURCE: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/service-account-source`,
+  USER_IDENTITIES: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/identities`,
+  USER_SESSION: (userName: string, sessionPk: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
+  CURRENT_USER_TOKEN: (tokenId: number | string) =>
+    `/api/2.0/mlflow/users/current/tokens/${encodeURIComponent(String(tokenId))}`,
+  // Admin: another user's (or service account's) API tokens
+  USER_TOKENS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens`,
+  USER_TOKEN: (userName: string, tokenId: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens/${encodeURIComponent(String(tokenId))}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
@@ -202,19 +228,31 @@ export const DYNAMIC_API_ENDPOINTS = {
   ) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
 
+  // MCP server permissions (no pattern permissions exist for MCP servers)
+  MCP_SERVER_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/mcp-servers/${encodeURIComponent(String(name))}/users`,
+  MCP_SERVER_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/mcp-servers/${encodeURIComponent(String(name))}/groups`,
+  USER_MCP_SERVER_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/mcp-servers`,
+  USER_MCP_SERVER_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/mcp-servers/${encodeURIComponent(name)}`,
+  GROUP_MCP_SERVER_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers`,
+  GROUP_MCP_SERVER_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers/${encodeURIComponent(name)}`,
+
   // Workspace CRUD
   WORKSPACE_DETAIL: (workspace: string) =>
     `/api/3.0/mlflow/workspaces/${encodeURIComponent(workspace)}`,
 
   // Workspace permission management
-  WORKSPACE_USERS: (workspace: string) =>
-    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/users`,
-  WORKSPACE_GROUPS: (workspace: string) =>
-    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/groups`,
-  WORKSPACE_USER: (workspace: string, username: string) =>
-    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/users/${encodeURIComponent(username)}`,
-  WORKSPACE_GROUP: (workspace: string, groupName: string) =>
-    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/groups/${encodeURIComponent(groupName)}`,
+
+  // Workspace group rules (admin only)
+  WORKSPACE_RULE: (ruleId: number | string) =>
+    `/api/3.0/mlflow/workspace-rules/${encodeURIComponent(String(ruleId))}`,
+  WORKSPACE_RULE_PREVIEW: (ruleId: number | string) =>
+    `/api/3.0/mlflow/workspace-rules/${encodeURIComponent(String(ruleId))}/preview`,
 
   // Quota
   GET_USER_QUOTA: (username: string) =>
@@ -231,6 +269,12 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/oidc/webhook/${encodeURIComponent(webhookId)}`,
   TEST_WEBHOOK: (webhookId: string) =>
     `/oidc/webhook/${encodeURIComponent(webhookId)}/test`,
+
+  // SCIM token management
+  SCIM_TOKEN_DETAIL: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}`,
+  SCIM_TOKEN_ROTATE: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}/rotate`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;

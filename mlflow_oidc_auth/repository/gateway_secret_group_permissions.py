@@ -2,13 +2,14 @@
 
 from typing import List
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGatewaySecretGroupPermission
 from mlflow_oidc_auth.entities import GatewaySecretPermission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 
 
 class GatewaySecretGroupPermissionRepository(BaseGroupPermissionRepository[SqlGatewaySecretGroupPermission, GatewaySecretPermission]):
-    model_class = SqlGatewaySecretGroupPermission
+    grant_kind = permission_kinds.GATEWAY_VAULT
     resource_id_attr = "secret_id"
 
     # -- Custom methods matching original API ---------------------------------

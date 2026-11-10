@@ -27,6 +27,7 @@ def mock_store():
     """Store with all repositories mocked for isolated testing"""
     store = SqlAlchemyStore()
     store.user_repo = MagicMock()
+    store.user_token_repo = MagicMock()
     store.experiment_repo = MagicMock()
     store.experiment_group_repo = MagicMock()
     store.group_repo = MagicMock()
@@ -52,8 +53,6 @@ def create_test_user(
     return User(
         id_=1,
         username=username,
-        password_hash="hashed_password",
-        password_expiration=None,
         is_admin=is_admin,
         is_service_account=is_service_account,
         display_name=display_name,
@@ -135,17 +134,17 @@ class TestSqlAlchemyStore:
     def test_get_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.get_registered_model_regex_permission(1, "user")
-        store.registered_model_regex_repo.get.assert_called_once_with(1, "user")
+        store.registered_model_regex_repo.get.assert_called_once_with(username="user", id=1)
 
     def test_update_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.update_registered_model_regex_permission(1, ".*", 2, "EDIT", "user")
-        store.registered_model_regex_repo.update.assert_called_once_with(1, ".*", 2, "EDIT", "user")
+        store.registered_model_regex_repo.update.assert_called_once_with(regex=".*", priority=2, permission="EDIT", username="user", id=1)
 
     def test_delete_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.delete_registered_model_regex_permission(1, "user")
-        store.registered_model_regex_repo.revoke.assert_called_once_with(1, "user")
+        store.registered_model_regex_repo.revoke.assert_called_once_with(username="user", id=1)
 
     def test_create_group_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_group_regex_repo = MagicMock()
@@ -184,85 +183,84 @@ class TestSqlAlchemyStore:
 
     def test_create_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.create_prompt_regex_permission(".*", 1, "READ", "user", prompt=True)
-        store.prompt_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", username="user", prompt=True)
+        store.create_prompt_regex_permission(".*", 1, "READ", "user")
+        store.prompt_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", username="user")
 
     def test_get_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.get_prompt_regex_permission(1, "user", prompt=True)
-        store.prompt_regex_repo.get.assert_called_once_with(id=1, username="user", prompt=True)
+        store.get_prompt_regex_permission(1, "user")
+        store.prompt_regex_repo.get.assert_called_once_with(username="user", id=1)
 
     def test_update_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.update_prompt_regex_permission(1, ".*", 2, "EDIT", "user", prompt=True)
-        store.prompt_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            username="user",
-            prompt=True,
-        )
+        store.update_prompt_regex_permission(1, ".*", 2, "EDIT", "user")
+        store.prompt_regex_repo.update.assert_called_once_with(regex=".*", priority=2, permission="EDIT", username="user", id=1)
 
     def test_delete_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
         store.delete_prompt_regex_permission(1, "user")
-        store.prompt_regex_repo.revoke.assert_called_once_with(id=1, username="user", prompt=True)
+        store.prompt_regex_repo.revoke.assert_called_once_with(username="user", id=1)
 
     def test_create_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.create_group_prompt_regex_permission(".*", 1, "READ", "group", prompt=True)
-        store.prompt_group_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", group_name="group", prompt=True)
+        store.create_group_prompt_regex_permission(".*", 1, "READ", "group")
+        store.prompt_group_regex_repo.grant.assert_called_once_with(group_name="group", regex=".*", priority=1, permission="READ")
 
     def test_get_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.get_group_prompt_regex_permission(1, "group", prompt=True)
-        store.prompt_group_regex_repo.get.assert_called_once_with(id=1, group_name="group", prompt=True)
+        store.get_group_prompt_regex_permission(1, "group")
+        store.prompt_group_regex_repo.get.assert_called_once_with(group_name="group", id=1)
 
     def test_list_group_prompt_regex_permissions(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions("group", prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_group.assert_called_once_with(group_name="group", prompt=True)
+        store.list_group_prompt_regex_permissions("group")
+        store.prompt_group_regex_repo.list_permissions_for_group.assert_called_once_with("group")
 
     def test_update_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.update_group_prompt_regex_permission(1, ".*", 2, "EDIT", "group", prompt=True)
-        store.prompt_group_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            group_name="group",
-            prompt=True,
-        )
+        store.update_group_prompt_regex_permission(1, ".*", 2, "EDIT", "group")
+        store.prompt_group_regex_repo.update.assert_called_once_with(id=1, group_name="group", regex=".*", priority=2, permission="EDIT")
 
     def test_delete_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
         store.delete_group_prompt_regex_permission(1, "group")
-        store.prompt_group_regex_repo.revoke.assert_called_once_with(id=1, group_name="group", prompt=True)
+        store.prompt_group_regex_repo.revoke.assert_called_once_with(group_name="group", id=1)
 
     def test_list_group_prompt_regex_permissions_for_groups(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions_for_groups(["group1", "group2"], prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_groups.assert_called_once_with(group_names=["group1", "group2"], prompt=True)
+        store.list_group_prompt_regex_permissions_for_groups(["group1", "group2"])
+        store.prompt_group_regex_repo.list_permissions_for_groups.assert_called_once_with(["group1", "group2"])
 
     def test_list_group_prompt_regex_permissions_for_groups_ids(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions_for_groups_ids([1, 2], prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with(group_ids=[1, 2], prompt=True)
+        store.list_group_prompt_regex_permissions_for_groups_ids([1, 2])
+        store.prompt_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with([1, 2])
 
     # Test missing user management methods
     def test_authenticate_user(self, mock_store: SqlAlchemyStore):
-        mock_store.user_repo.authenticate.return_value = True
+        mock_store.user_token_repo.authenticate.return_value = True
         result = mock_store.authenticate_user("testuser", "password")
-        mock_store.user_repo.authenticate.assert_called_once_with("testuser", "password")
+        mock_store.user_token_repo.authenticate.assert_called_once_with("testuser", "password")
         assert result is True
+
+    def test_token_methods_delegate_to_the_token_repository(self, mock_store: SqlAlchemyStore):
+        expires = datetime.now()
+        mock_store.create_user_token("u", "ci", expires, created_by="admin")
+        mock_store.user_token_repo.create.assert_called_once_with("u", "ci", expires, "admin")
+        mock_store.replace_user_token("u", "default", expires, created_by=None)
+        mock_store.user_token_repo.replace.assert_called_once_with("u", "default", expires, None)
+        mock_store.list_user_tokens("u")
+        mock_store.user_token_repo.list.assert_called_once_with("u")
+        mock_store.delete_user_token("u", 3)
+        mock_store.user_token_repo.delete.assert_called_once_with("u", 3)
+        mock_store.delete_user_tokens("u")
+        mock_store.user_token_repo.delete_all.assert_called_once_with("u")
 
     def test_create_user(self, mock_store: SqlAlchemyStore):
         mock_user = create_test_user("testuser", "Test User", False, False)
         mock_store.user_repo.create.return_value = mock_user
-        result = mock_store.create_user("testuser", "password", "Test User", False, False)
-        mock_store.user_repo.create.assert_called_once_with("testuser", "password", "Test User", False, False)
+        result = mock_store.create_user("testuser", "Test User", False, False)
+        mock_store.user_repo.create.assert_called_once_with("testuser", "Test User", False, False, written_by=None, service_account_source=None)
         assert result == mock_user
 
     def test_has_user(self, mock_store: SqlAlchemyStore):
@@ -288,20 +286,22 @@ class TestSqlAlchemyStore:
     def test_update_user(self, mock_store: SqlAlchemyStore):
         mock_user = create_test_user("testuser", "Updated User", True)
         mock_store.user_repo.update.return_value = mock_user
-        expiration = datetime.now()
-        result = mock_store.update_user("testuser", "newpass", expiration, True, False)
+        result = mock_store.update_user("testuser", True, False, revoke_tokens=True)
         mock_store.user_repo.update.assert_called_once_with(
             username="testuser",
-            password="newpass",
-            password_expiration=expiration,
             is_admin=True,
             is_service_account=False,
+            active=None,
+            managed_by=None,
+            written_by=None,
+            admin_override=False,
+            revoke_tokens=True,
         )
         assert result == mock_user
 
     def test_delete_user(self, mock_store: SqlAlchemyStore):
         mock_store.delete_user("testuser")
-        mock_store.user_repo.delete.assert_called_once_with("testuser")
+        mock_store.user_repo.delete.assert_called_once_with("testuser", written_by=None, admin_override=False, actor=None)
 
     # Test experiment permission methods
     def test_create_experiment_permission(self, mock_store: SqlAlchemyStore):
@@ -425,7 +425,7 @@ class TestSqlAlchemyStore:
     # Test group management methods
     def test_populate_groups(self, mock_store: SqlAlchemyStore):
         mock_store.populate_groups(["group1", "group2"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"], written_by=None)
 
     def test_get_groups(self, mock_store: SqlAlchemyStore):
         mock_groups = ["group1", "group2"]
@@ -465,7 +465,7 @@ class TestSqlAlchemyStore:
 
     def test_set_user_groups(self, mock_store: SqlAlchemyStore):
         mock_store.set_user_groups("user1", ["group1", "group2"])
-        mock_store.group_repo.set_groups_for_user.assert_called_once_with("user1", ["group1", "group2"])
+        mock_store.group_repo.set_groups_for_user.assert_called_once_with("user1", ["group1", "group2"], written_by=None, admin_override=False, actor=None)
 
     def test_get_group_experiments(self, mock_store: SqlAlchemyStore):
         mock_permissions = [create_test_experiment_permission("exp1", "READ", 1)]
@@ -519,22 +519,22 @@ class TestSqlAlchemyStore:
     # Test prompt permission methods
     def test_create_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.create_group_prompt_permission("group1", "prompt1", "READ")
-        mock_store.prompt_group_repo.grant_prompt_permission_to_group.assert_called_once_with("group1", "prompt1", "READ")
+        mock_store.prompt_group_repo.grant_group_permission.assert_called_once_with("group1", "prompt1", "READ")
 
     def test_get_group_prompts(self, mock_store: SqlAlchemyStore):
         mock_permissions = [create_test_registered_model_permission("prompt1", "READ", 1, prompt=True)]
-        mock_store.prompt_group_repo.list_prompt_permissions_for_group.return_value = mock_permissions
+        mock_store.prompt_group_repo.list_permissions_for_group.return_value = mock_permissions
         result = mock_store.get_group_prompts("group1")
-        mock_store.prompt_group_repo.list_prompt_permissions_for_group.assert_called_once_with("group1")
+        mock_store.prompt_group_repo.list_permissions_for_group.assert_called_once_with("group1")
         assert result == mock_permissions
 
     def test_update_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.update_group_prompt_permission("group1", "prompt1", "EDIT")
-        mock_store.prompt_group_repo.update_prompt_permission_for_group.assert_called_once_with("group1", "prompt1", "EDIT")
+        mock_store.prompt_group_repo.update_group_permission.assert_called_once_with("group1", "prompt1", "EDIT")
 
     def test_delete_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.delete_group_prompt_permission("group1", "prompt1")
-        mock_store.prompt_group_repo.revoke_prompt_permission_from_group.assert_called_once_with("group1", "prompt1")
+        mock_store.prompt_group_repo.revoke_group_permission.assert_called_once_with("group1", "prompt1")
 
     # Test regex permission methods that were missing
     def test_list_experiment_regex_permissions(self, mock_store: SqlAlchemyStore):
@@ -562,8 +562,8 @@ class TestSqlAlchemyStore:
         mock_store.registered_model_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with([1, 2])
 
     def test_list_prompt_regex_permissions(self, mock_store: SqlAlchemyStore):
-        mock_store.list_prompt_regex_permissions("user1", prompt=True)
-        mock_store.prompt_regex_repo.list_regex_for_user.assert_called_once_with(username="user1", prompt=True)
+        mock_store.list_prompt_regex_permissions("user1")
+        mock_store.prompt_regex_repo.list_regex_for_user.assert_called_once_with(username="user1")
 
 
 class TestSqlAlchemyStoreErrorHandling:
@@ -589,7 +589,7 @@ class TestSqlAlchemyStoreErrorHandling:
 
     def test_user_operations_with_database_error(self, mock_store):
         """Test user operations when database operations fail"""
-        mock_store.user_repo.authenticate.side_effect = OperationalError("Database error", None, None)
+        mock_store.user_token_repo.authenticate.side_effect = OperationalError("Database error", None, None)
 
         with pytest.raises(OperationalError):
             mock_store.authenticate_user("testuser", "password")
@@ -629,10 +629,10 @@ class TestSqlAlchemyStoreTransactionHandling:
 
         # First call should raise exception
         with pytest.raises(SQLAlchemyError):
-            mock_store.create_user("testuser", "password", "Test User", False, False)
+            mock_store.create_user("testuser", "Test User", False, False)
 
         # Second call should succeed (simulating retry after rollback)
-        result = mock_store.create_user("testuser", "password", "Test User", False, False)
+        result = mock_store.create_user("testuser", "Test User", False, False)
         assert result.username == "testuser"
 
     def test_concurrent_permission_updates(self, mock_store):
@@ -655,14 +655,14 @@ class TestSqlAlchemyStoreTransactionHandling:
         # Test bulk group creation
         mock_store.group_repo.create_groups.return_value = None
         mock_store.populate_groups(["group1", "group2", "group3"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"], written_by=None)
 
     def test_cascading_delete_operations(self, mock_store):
         """Test cascading delete operations maintain referential integrity"""
         # Test user deletion cascades to permissions
         mock_store.user_repo.delete.return_value = None
         mock_store.delete_user("testuser")
-        mock_store.user_repo.delete.assert_called_once_with("testuser")
+        mock_store.user_repo.delete.assert_called_once_with("testuser", written_by=None, admin_override=False, actor=None)
 
         # Test model deletion cascades to permissions
         mock_store.registered_model_repo.wipe.return_value = None
@@ -678,7 +678,7 @@ class TestSqlAlchemyStoreConcurrentAccess:
 
         def create_user_worker(username):
             try:
-                return mock_store.create_user(f"user_{username}", "password", f"User {username}", False, False)
+                return mock_store.create_user(f"user_{username}", f"User {username}", False, False)
             except Exception as e:
                 return e
 
@@ -865,7 +865,7 @@ class TestSqlAlchemyStoreEdgeCases:
         # Test user creation with long values
         mock_user = create_test_user(long_username, long_display_name, False)
         mock_store.user_repo.create.return_value = mock_user
-        result = mock_store.create_user(long_username, "password", long_display_name, False, False)
+        result = mock_store.create_user(long_username, long_display_name, False, False)
         assert result.username == long_username
         assert result.display_name == long_display_name
 

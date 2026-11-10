@@ -72,7 +72,7 @@ def test_list_for_user(repo, session):
     user = MagicMock(id=3)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().all.return_value = [perm]
+    session.query().join().filter().all.return_value = [perm]
     with patch(f"{_BASE}.get_user", return_value=user):
         assert repo.list_for_user("user") == ["entity"]
 
@@ -146,13 +146,11 @@ def test__get_permission_not_found(repo, session):
 
 
 def test__get_permission_multiple_found(repo, session):
-    """Test _get_permission when multiple permissions are found"""
-    session.query().join().filter().one.side_effect = MultipleResultsFound()
+    """Unassigned duplicates (see _GrantWorkspaceScope._one_in_scope): one is picked deterministically."""
+    query = session.query().join().filter()
+    query.one.side_effect = MultipleResultsFound()
 
-    with pytest.raises(MlflowException) as exc:
-        repo._get_permission(session, "test_model", "user1")
-
-    assert exc.value.error_code == "INVALID_STATE"
+    assert repo._get_permission(session, "test_model", "user1") is query.order_by().first()
 
 
 def test__get_permission_database_error(repo, session):

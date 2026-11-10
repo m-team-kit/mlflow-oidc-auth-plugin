@@ -7,8 +7,8 @@ error handler registration, and application startup/shutdown procedures.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
-from fastapi import FastAPI
+from unittest.mock import patch
+from fastapi import APIRouter, FastAPI
 from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
 
 from mlflow_oidc_auth.app import create_app
@@ -43,9 +43,9 @@ class TestCreateApp:
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_config.ENABLE_API_DOCS = True
-        mock_router1 = MagicMock()
-        mock_router2 = MagicMock()
-        mock_get_all_routers.return_value = [mock_router1, mock_router2]
+        # Use real APIRouter instances: FastAPI's include_router inspects the
+        # router it is given, so a MagicMock trips its internal assertions.
+        mock_get_all_routers.return_value = [APIRouter(), APIRouter()]
 
         # Call the function
         result = create_app()
@@ -156,6 +156,38 @@ class TestCreateApp:
     @patch("mlflow_oidc_auth.app.app")
     @patch("mlflow_oidc_auth.app.before_request_hook")
     @patch("mlflow_oidc_auth.app.after_request_hook")
+    def test_admin_redirect_alone_leaves_mlflows_index_untouched(
+        self,
+        mock_after_request_hook,
+        mock_before_request_hook,
+        mock_flask_app,
+        mock_auth_aware_wsgi_middleware,
+        mock_auth_middleware,
+        mock_get_all_routers,
+        mock_register_exception_handlers,
+        mock_config,
+    ):
+        """A deployment that switched off the menu and re-auth injections keeps MLflow's index as is."""
+        mock_config.SECRET_KEY = "test-secret-key"
+        mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.EXTEND_MLFLOW_REAUTH = False
+        mock_config.EXTEND_MLFLOW_REDIRECT_ADMIN = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_get_all_routers.return_value = []
+        mock_flask_app.view_functions = {}
+
+        create_app()
+
+        assert "serve" not in mock_flask_app.view_functions
+
+    @patch("mlflow_oidc_auth.app.config")
+    @patch("mlflow_oidc_auth.app.register_exception_handlers")
+    @patch("mlflow_oidc_auth.app.get_all_routers")
+    @patch("mlflow_oidc_auth.app.AuthMiddleware")
+    @patch("mlflow_oidc_auth.app.AuthAwareWSGIMiddleware")
+    @patch("mlflow_oidc_auth.app.app")
+    @patch("mlflow_oidc_auth.app.before_request_hook")
+    @patch("mlflow_oidc_auth.app.after_request_hook")
     def test_create_app_router_registration(
         self,
         mock_after_request_hook,
@@ -173,15 +205,13 @@ class TestCreateApp:
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
-        # Create mock routers
-        mock_router1 = MagicMock()
-        mock_router1.prefix = "/api/v1"
-        mock_router2 = MagicMock()
-        mock_router2.prefix = "/api/v2"
-        mock_router3 = MagicMock()
-        mock_router3.prefix = "/ui"
-
-        mock_get_all_routers.return_value = [mock_router1, mock_router2, mock_router3]
+        # Use real APIRouter instances: FastAPI's include_router inspects the
+        # router it is given, so a MagicMock trips its internal assertions.
+        mock_get_all_routers.return_value = [
+            APIRouter(prefix="/api/v1"),
+            APIRouter(prefix="/api/v2"),
+            APIRouter(prefix="/ui"),
+        ]
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
             mock_getattr.return_value = True
@@ -411,6 +441,41 @@ class TestCreateApp:
             mock_get_all_routers.assert_called_once()
 
 
+class TestIncludeMlflowFastapiRouters:
+    """Test that MLflow's FastAPI-native routers reach the OIDC app.
+
+    Anything missing here falls through to the Flask WSGI mount, which has no
+    rule for it, so the UI gets a plain 404 instead of the feature.
+    """
+
+    def _paths(self):
+        from mlflow_oidc_auth.app import _include_mlflow_fastapi_routers
+
+        oidc_app = FastAPI()
+        _include_mlflow_fastapi_routers(oidc_app)
+        return set(oidc_app.openapi()["paths"])
+
+    def test_mcp_server_registry_router_included(self):
+        """Test the MCP server registry is served on both the API and UI prefix."""
+        paths = self._paths()
+        assert "/api/3.0/mlflow/mcp-servers" in paths
+        assert "/ajax-api/3.0/mlflow/mcp-servers" in paths
+
+    def test_gateway_and_assistant_routers_included(self):
+        """Test the previously registered routers are still included."""
+        paths = self._paths()
+        assert "/gateway/mlflow/v1/chat/completions" in paths
+        assert "/ajax-api/3.0/mlflow/assistant/config" in paths
+
+    def test_missing_mlflow_module_is_tolerated(self):
+        """Test an unavailable MLflow module disables its routes instead of raising."""
+        with patch.dict("sys.modules", {"mlflow.server.mcp_server_api": None}):
+            paths = self._paths()
+
+        assert "/api/3.0/mlflow/mcp-servers" not in paths
+        assert "/gateway/mlflow/v1/chat/completions" in paths
+
+
 class TestAppModuleImports:
     """Test module-level imports and dependencies."""
 
@@ -538,10 +603,12 @@ class TestAppErrorHandling:
             mock_getattr.return_value = True
 
             # Since testing actual import failures is complex and can affect other imports,
-            # we'll test the behavior when EXTEND_MLFLOW_MENU and EXTEND_MLFLOW_REAUTH
-            # are both False — this ensures the hack import code path is not executed.
+            # we'll test the behavior when EXTEND_MLFLOW_MENU, EXTEND_MLFLOW_REAUTH and
+            # EXTEND_MLFLOW_REDIRECT_ADMIN are all False — this ensures the hack import
+            # code path is not executed.
             mock_config.EXTEND_MLFLOW_MENU = False
             mock_config.EXTEND_MLFLOW_REAUTH = False
+            mock_config.EXTEND_MLFLOW_REDIRECT_ADMIN = False
             mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
             # Call the function

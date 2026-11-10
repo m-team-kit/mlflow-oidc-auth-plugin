@@ -5,11 +5,15 @@ import { QuotaBar } from "../../shared/components/quota-bar";
 import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { UserQuota } from "../../shared/types/user";
 
 type QuotaRow = UserQuota & { id: string; [key: string]: unknown };
+
+const userHref = (username: string) =>
+  buildEntityRoute("/users", username, "/experiments");
 
 export default function QuotaAdminPage() {
   const {
@@ -36,9 +40,9 @@ export default function QuotaAdminPage() {
     {
       header: "Username",
       render: ({ username }) => (
-        <span className="truncate block" title={username}>
+        <EntityNameLink to={userHref(username)} title={username}>
           {username}
-        </span>
+        </EntityNameLink>
       ),
     },
     {
@@ -64,20 +68,6 @@ export default function QuotaAdminPage() {
           <QuotaBar quota={quota} />
         </div>
       ),
-    },
-    {
-      header: "Permissions",
-      render: ({ username }) => (
-        <div className="invisible group-hover:visible">
-          <RowActionButton
-            entityId={username}
-            suffix="/experiments"
-            route="/users"
-            buttonText="Manage permissions"
-          />
-        </div>
-      ),
-      className: "flex-shrink-0",
     },
   ];
 
@@ -105,6 +95,7 @@ export default function QuotaAdminPage() {
             data={rows}
             searchTerm={submittedTerm}
             columns={columns}
+            getRowHref={({ username }) => userHref(username)}
           />
         </>
       )}

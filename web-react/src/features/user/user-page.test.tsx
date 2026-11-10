@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UserPage } from "./user-page";
 import * as useCurrentUserModule from "../../core/hooks/use-current-user";
 import React from "react";
+import { workspaceScopeWrapper } from "../../tests/workspace-scope-wrapper";
 
 const mockUseUser = vi.fn();
+const mockUseParams = vi.fn(() => ({ tab: "info" }));
 
 vi.mock("react-router", () => ({
-  useParams: () => ({ tab: "info" }),
+  useParams: () => mockUseParams(),
   Link: ({
     children,
     to,
@@ -23,7 +25,10 @@ vi.mock("react-router", () => ({
   ),
 }));
 
-vi.mock("../../shared/context/use-runtime-config", () => ({
+vi.mock("../../shared/context/use-runtime-config", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../shared/context/use-runtime-config")
+  >()),
   useRuntimeConfig: () => ({ gen_ai_gateway_enabled: true }),
 }));
 
@@ -66,7 +71,11 @@ vi.mock("../../core/hooks/use-user-gateway-model-permissions", () => ({
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
-  useSearch: () => ({ handleClearSearch: vi.fn(), submittedTerm: "" }),
+  useSearch: () => ({
+    handleClearSearch: vi.fn(),
+    submittedTerm: "",
+    searchTerm: "",
+  }),
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -86,15 +95,17 @@ vi.mock("./components/user-details-card", () => ({
   ),
 }));
 
-vi.mock("../../shared/components/token-info-block", () => ({
-  TokenInfoBlock: () => <div>Token Info</div>,
+vi.mock("../tokens/components/user-tokens-panel", () => ({
+  UserTokensPanel: ({ username }: { username?: string }) => (
+    <div data-testid="tokens-panel">{username ?? "self"}</div>
+  ),
 }));
 
 describe("UserPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseUser.mockReturnValue({
-      currentUser: { username: "testuser", password_expiration: 123 },
+      currentUser: { username: "testuser" },
       isLoading: false,
       error: null,
     });
@@ -128,5 +139,34 @@ describe("UserPage", () => {
       "href",
       "/user/ai-secrets",
     );
+  });
+
+  it("has a Tokens tab that shows the signed-in user's own tokens", () => {
+    mockUseParams.mockReturnValue({ tab: "tokens" });
+    render(<UserPage />);
+    expect(screen.getByText("Tokens").closest("a")).toHaveAttribute(
+      "href",
+      "/user/tokens",
+    );
+    expect(screen.getByTestId("tokens-panel")).toHaveTextContent("self");
+    expect(screen.queryByText("Details for testuser")).not.toBeInTheDocument();
+    mockUseParams.mockReturnValue({ tab: "info" });
+  });
+
+  it("names the workspace of the signed-in user's model grants, read-only", () => {
+    mockUseParams.mockReturnValue({ tab: "models" });
+    render(<UserPage />, { wrapper: workspaceScopeWrapper(true, null) });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "These are the default workspace's grants",
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent(/change/);
+    mockUseParams.mockReturnValue({ tab: "info" });
+  });
+
+  it("shows no workspace notice on the experiments tab", () => {
+    mockUseParams.mockReturnValue({ tab: "experiments" });
+    render(<UserPage />, { wrapper: workspaceScopeWrapper(true, "team-a") });
+    expect(screen.queryByRole("status")).toBeNull();
+    mockUseParams.mockReturnValue({ tab: "info" });
   });
 });

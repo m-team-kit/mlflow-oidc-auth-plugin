@@ -5,6 +5,7 @@ import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
 import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
+import { useDocumentTitle } from "./core/hooks/use-document-title";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const AiEndpointsPage = React.lazy(
@@ -24,6 +25,12 @@ const AiModelsPage = React.lazy(
 );
 const AiModelsPermissionPage = React.lazy(
   () => import("./features/ai-gateway/ai-models-permissions-page"),
+);
+const McpServersPage = React.lazy(
+  () => import("./features/mcp-servers/mcp-servers-page"),
+);
+const McpServersPermissionPage = React.lazy(
+  () => import("./features/mcp-servers/mcp-servers-permission-page"),
 );
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page"),
@@ -56,6 +63,9 @@ const WorkspacesPage = React.lazy(
 const WorkspaceDetailPage = React.lazy(
   () => import("./features/workspaces/workspace-detail-page"),
 );
+const WorkspaceRulesPage = React.lazy(
+  () => import("./features/workspace-rules/workspace-rules-page"),
+);
 
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
@@ -69,6 +79,7 @@ const WebhooksPage = React.lazy(
 const QuotaAdminPage = React.lazy(
   () => import("./features/quota/quota-admin-page"),
 );
+const ScimPage = React.lazy(() => import("./features/scim/scim-page"));
 const NotFoundPage = React.lazy(
   () => import("./features/not-found/not-found-page"),
 );
@@ -86,6 +97,8 @@ const ProtectedLayoutRoute = ({
 );
 
 export default function App() {
+  useDocumentTitle();
+
   return (
     <Routes>
       <Route
@@ -101,6 +114,22 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <AiEndpointsPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <McpServersPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/mcp-servers/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <McpServersPermissionPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -193,6 +222,14 @@ export default function App() {
         }
       />
       <Route
+        path="/groups/:groupName/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="mcp-servers" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/groups/:groupName/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -281,6 +318,14 @@ export default function App() {
         }
       />
       <Route
+        path="/service-accounts/:username/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="mcp-servers" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/service-accounts/:username/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -304,6 +349,14 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ServiceAccountPermissionPage type="tokens" />
+          </ProtectedLayoutRoute>
+        }
+      />
 
       <Route
         path="/workspaces"
@@ -318,6 +371,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <WorkspaceDetailPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/workspace-rules"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <WorkspaceRulesPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -371,6 +432,14 @@ export default function App() {
         }
       />
       <Route
+        path="/users/:username/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="mcp-servers" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/users/:username/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -395,6 +464,14 @@ export default function App() {
         }
       />
       <Route
+        path="/users/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <UserPermissionsPage type="tokens" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/webhooks"
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
@@ -407,6 +484,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <QuotaAdminPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/scim"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ScimPage />
           </ProtectedLayoutRoute>
         }
       />

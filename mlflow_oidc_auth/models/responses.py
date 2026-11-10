@@ -6,9 +6,11 @@ of ad-hoc JSONResponse payloads.
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
+
+from mlflow_oidc_auth.models._base import ResponseModel
 
 
 class MessageResponse(BaseModel):
@@ -84,6 +86,7 @@ class RegisteredModelRegexPermissionRecord(BaseModel):
     user_id: int = Field(..., description="User ID")
     permission: str = Field(..., description="Permission name")
     prompt: bool = Field(False, description="True if this pattern applies to prompts")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class PromptRegexPermissionResponse(BaseModel):
@@ -121,6 +124,7 @@ class ScorerRegexPermissionRecord(BaseModel):
     priority: int = Field(..., description="Evaluation priority")
     user_id: int = Field(..., description="User ID")
     permission: str = Field(..., description="Permission name")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class ScorerRegexPermissionResponse(BaseModel):
@@ -138,6 +142,7 @@ class UserGatewayRegexPermissionItem(BaseModel):
     user_id: Optional[int] = Field(None, description="Identifier of the user that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["user"] = Field("user", description="Indicates this is a user gateway regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class RegisteredModelRegexPermissionListResponse(BaseModel):
@@ -156,7 +161,7 @@ class GroupRecord(BaseModel):
     group_name: str = Field(..., description="Group name")
 
 
-class CurrentUserProfile(BaseModel):
+class CurrentUserProfile(ResponseModel):
     """Lightweight current-user profile.
 
     This model intentionally excludes permission collections to keep the payload
@@ -168,5 +173,32 @@ class CurrentUserProfile(BaseModel):
     id: int = Field(..., description="User ID")
     is_admin: bool = Field(..., description="Whether the user is an administrator")
     is_service_account: bool = Field(..., description="Whether the user is a service account")
-    password_expiration: Optional[str] = Field(None, description="Password expiration ISO timestamp")
     username: str = Field(..., description="Username")
+
+
+class RegisteredModelListItem(ResponseModel):
+    """A registered model or prompt in the list the caller may manage."""
+
+    name: str = Field(..., description="Registered model or prompt name")
+    tags: Dict[str, str] = Field(default_factory=dict, description="Tags")
+    description: Optional[str] = Field(None, description="Description")
+    aliases: Dict[str, Union[str, int]] = Field(default_factory=dict, description="Alias -> version")
+
+
+class McpServerListItem(ResponseModel):
+    """An MCP server of the request's workspace."""
+
+    name: str = Field(..., description="Server name")
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    latest_version: Optional[str] = None
+    workspace: Optional[str] = None
+
+
+class GroupDetail(ResponseModel):
+    """A group with its external id and member count (``GET /permissions/groups/details``)."""
+
+    group_name: str = Field(..., description="Group name")
+    external_id: Optional[str] = Field(None, description="Directory id, when provisioned")
+    member_count: int = Field(..., description="Number of members")

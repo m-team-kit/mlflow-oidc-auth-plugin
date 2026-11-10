@@ -18,10 +18,17 @@ def _deleg_can_manage_experiment(experiment_id, username):
     return _utils.can_manage_experiment(experiment_id, username)
 
 
-def _deleg_can_manage_registered_model(model_name, username):
-    from mlflow_oidc_auth import utils as _utils
+def _deleg_effective_registry_permission(name, username, **_kind):
+    """The registered-model and prompt gates (#479) follow one test-controlled flag.
 
-    return _utils.can_manage_registered_model(model_name, username)
+    The gates judge a name by its real kind through ``effective_registry_permission``; these router
+    tests control access through ``utils.can_manage_registered_model`` for both kinds.
+    """
+    from mlflow_oidc_auth import utils as _utils
+    from mlflow_oidc_auth.models import PermissionResult
+    from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS
+
+    return PermissionResult(MANAGE if _utils.can_manage_registered_model(name, username) else NO_PERMISSIONS, "test")
 
 
 def _deleg_can_manage_scorer(experiment_id, scorer_name, username):
@@ -35,12 +42,15 @@ def mock_store():
     """Mock the store module with comprehensive user and permission data."""
     store_mock = MagicMock()
 
+    # Server-side sessions (#310). Returning a bare MagicMock here would be *truthy*, so an
+    # unauthenticated request would look authenticated — default to "no session" and let a test
+    # opt in explicitly.
+    store_mock.resolve_auth_session.return_value = None
+
     # Mock users
     admin_user = User(
         id_=1,
         username="admin@example.com",
-        password_hash="admin_token_hash",
-        password_expiration=None,
         is_admin=True,
         is_service_account=False,
         display_name="Admin User",
@@ -49,8 +59,6 @@ def mock_store():
     regular_user = User(
         id_=2,
         username="user@example.com",
-        password_hash="user_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=False,
         display_name="Regular User",
@@ -59,8 +67,6 @@ def mock_store():
     service_user = User(
         id_=3,
         username="service@example.com",
-        password_hash="service_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=True,
         display_name="Service Account",
@@ -222,6 +228,7 @@ def _patch_router_stores(mock_store):
         try:
             p.start()
         except Exception:
+            # Best effort: a target missing in this environment simply stays unpatched.
             pass
 
     yield
@@ -230,4 +237,5 @@ def _patch_router_stores(mock_store):
         try:
             p.stop()
         except Exception:
+            # Teardown is best effort: a patch that never started cannot be stopped.
             pass
